@@ -2,760 +2,142 @@
 <html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
-    <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="apple-mobile-web-app-title" content="Prestação Contas">
-    <title>Prestação de Contas</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Minhas Contas</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Identity Services para autenticação -->
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
         body { font-family: 'Inter', sans-serif; }
-        #area-impressao { display: none; }
-        @media print {
-            body * { visibility: hidden; }
-            #area-impressao, #area-impressao * { visibility: visible; }
-            #area-impressao { display: block; position: absolute; top: 0; left: 0; width: 100%; }
-            .folha { page-break-after: always; padding: 28px; }
-            .folha:last-child { page-break-after: auto; }
-        }
     </style>
 </head>
-<body class="bg-gray-50 min-h-screen pb-12">
- 
-    <div id="toast" class="fixed top-4 right-4 left-4 md:left-auto z-50 transform -translate-y-24 opacity-0 transition-all duration-300 bg-gray-900 text-white px-4 py-3 rounded-xl shadow-xl flex items-center space-x-3">
-        <span id="toast-icon">✨</span>
-        <span id="toast-msg" class="text-sm font-medium"></span>
-    </div>
- 
-    <div id="modal-zoom" class="fixed inset-0 z-50 bg-black/80 hidden items-center justify-center p-4">
-        <div class="relative max-w-full max-h-full">
-            <button onclick="fecharZoom()" class="absolute -top-10 right-0 text-white text-xl font-bold bg-gray-800 rounded-full w-8 h-8 flex items-center justify-center cursor-pointer">✕</button>
-            <img id="img-zoom-conteudo" src="" class="max-w-full max-h-[85vh] object-contain rounded-lg">
+<body class="bg-gray-100 min-h-screen p-4">
+    <div class="max-w-md mx-auto bg-white rounded-xl shadow-lg p-6">
+        <div class="flex justify-between items-center mb-4">
+            <h1 class="text-2xl font-bold text-purple-800">Prestação de Contas</h1>
+            <button id="btn-login" onclick="loginGoogle()" class="text-xs bg-gray-200 hover:bg-gray-300 px-3 py-1 rounded-full text-gray-700 font-semibold transition">Conectar Google</button>
         </div>
-    </div>
- 
-    <div id="area-impressao"></div>
- 
-    <header class="bg-purple-700 text-white shadow-md pt-6 pb-6 px-4 mb-6 nao-imprimir">
-        <div class="max-w-md mx-auto">
-            <h1 class="text-xl font-bold mb-1 text-center">Prestação de Contas</h1>
- 
-            <div id="status-sync" class="text-center mb-4">
-                <p class="text-xs text-purple-200">☁️ Verificando conexão de backup...</p>
-            </div>
- 
-            <div class="grid grid-cols-2 gap-3 mb-4">
-                <div>
-                    <label class="block text-xs font-medium text-purple-200 mb-1">Mês Ref.</label>
-                    <input type="text" id="mes-ref" value="Jul/2026" class="w-full bg-purple-800 border border-purple-500 rounded-lg px-3 py-2 text-white font-semibold text-sm focus:outline-none focus:ring-2 focus:ring-white">
-                </div>
-                <div>
-                    <label class="block text-xs font-medium text-purple-200 mb-1">Pensão Mensal</label>
-                    <input type="text" id="valor-pensao" placeholder="R$ 0,00" class="w-full bg-purple-800 border border-purple-500 rounded-lg px-3 py-2 text-white font-semibold text-sm focus:outline-none focus:ring-2 focus:ring-white">
-                </div>
-            </div>
- 
-            <div class="bg-purple-800/60 rounded-xl p-3 flex justify-between items-center text-sm border border-purple-600 mb-3">
-                <div>
-                    <p class="text-purple-200 text-xs">Total Gasto</p>
-                    <p id="resumo-gasto" class="font-bold text-base">R$ 0,00</p>
-                </div>
-                <div class="text-right">
-                    <p class="text-purple-200 text-xs">Saldo Restante</p>
-                    <p id="resumo-saldo" class="font-bold text-base">R$ 0,00</p>
-                </div>
-            </div>
- 
-            <div class="grid grid-cols-1 gap-2">
-                <button id="btn-conectar-pasta" onclick="conectarPasta()" class="hidden w-full bg-white/10 hover:bg-white/20 border border-purple-500 text-white font-medium py-2 rounded-lg text-xs transition cursor-pointer">
-                    🖥️ Conectar pasta de salvamento (Apenas PC)
-                </button>
-                <button id="btn-reconectar-pasta" onclick="reconectarPermissao()" class="hidden w-full bg-amber-500/90 hover:bg-amber-500 text-white font-medium py-2 rounded-lg text-xs transition cursor-pointer">
-                    🔄 Reconectar pasta 
-                </button>
-                <button onclick="compartilharGoogleDrive()" class="w-full bg-white/10 hover:bg-white/20 border border-purple-500 text-white font-medium py-2 rounded-lg text-xs transition cursor-pointer">
-                    📤 Exportar / Salvar Backup Manualmente
-                </button>
-                <label class="w-full bg-white/10 hover:bg-white/20 border border-purple-500 text-white font-medium py-2 rounded-lg text-xs transition cursor-pointer text-center block">
-                    📥 Importar Backup Anterior
-                    <input type="file" id="input-importar" accept=".json" class="hidden">
-                </label>
-            </div>
-        </div>
-    </header>
- 
-    <main class="max-w-md mx-auto px-4 space-y-6">
- 
-        <section class="bg-white rounded-2xl shadow-sm border border-purple-100 p-5 nao-imprimir">
-            <h2 id="form-titulo" class="text-sm font-semibold text-gray-800 mb-4 flex items-center space-x-2">
-                <span>📸 Novo Comprovante</span>
-            </h2>
- 
-            <form id="gasto-form" class="space-y-4">
-                <input type="hidden" id="edit-id" value="">
- 
-                <div>
-                    <label class="block text-xs font-medium text-gray-700 mb-1">Comprovante Principal (Leitura por IA - Gemini)</label>
-                    <div class="relative border-2 border-dashed border-purple-200 rounded-xl p-4 text-center hover:bg-purple-50/50 transition cursor-pointer flex flex-col items-center justify-center">
-                        <input type="file" id="foto-input" accept="image/*" class="absolute inset-0 opacity-0 cursor-pointer">
-                        <div id="preview-container" class="hidden w-full h-32 mb-2 relative">
-                            <img id="img-preview" src="" alt="Pré-visualização" class="w-full h-full object-contain rounded-lg cursor-pointer">
-                        </div>
-                        <div id="upload-placeholder" class="space-y-1">
-                            <span class="text-2xl">📁</span>
-                            <p class="text-xs font-medium text-purple-700">Tirar foto ou escolher recibo principal</p>
-                            <p class="text-[10px] text-gray-400">O Gemini preencherá data, valor e justificativa</p>
-                        </div>
-                    </div>
-                </div>
- 
-                <div>
-                    <label class="block text-xs font-medium text-gray-700 mb-1">Comprovantes Adicionais (Opcional)</label>
-                    <input type="file" id="fotos-extras-input" accept="image/*" multiple class="w-full text-xs text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-purple-50 file:text-purple-700 hover:file:bg-purple-100 cursor-pointer">
-                    <div id="lista-extras-preview" class="flex flex-wrap gap-2 mt-2"></div>
-                </div>
- 
-                <div class="grid grid-cols-2 gap-3">
-                    <div>
-                        <label class="block text-xs font-medium text-gray-700 mb-1">Data</label>
-                        <input type="date" id="campo-data" required class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-600">
-                    </div>
-                    <div>
-                        <label class="block text-xs font-medium text-gray-700 mb-1">Valor (R$)</label>
-                        <input type="number" step="0.01" id="campo-valor" placeholder="0,00" required class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-600">
-                    </div>
-                </div>
- 
-                <div>
-                    <label class="block text-xs font-medium text-gray-700 mb-1">Categoria</label>
-                    <input type="text" id="campo-categoria" list="lista-categorias" placeholder="Ex: Farmácia, Alimentação..." required class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-600">
-                    <datalist id="lista-categorias">
-                        <option value="Alimentação">
-                        <option value="Saúde / Farmácia">
-                        <option value="Educação">
-                        <option value="Vestuário">
-                        <option value="Lazer">
-                    </datalist>
-                </div>
- 
-                <div>
-                    <label class="block text-xs font-medium text-gray-700 mb-1">Local / Favorecido (Preenchimento Manual)</label>
-                    <input type="text" id="campo-local" placeholder="Ex: Supermercado Extra / Arthur Martins" required class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-600">
-                </div>
- 
-                <div>
-                    <label class="block text-xs font-medium text-gray-700 mb-1">Justificativa / Descrição</label>
-                    <textarea id="campo-justificativa" rows="2" placeholder="Ex: Compra de mantimentos essenciais" required class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-600"></textarea>
-                </div>
- 
-                <div class="flex space-x-2">
-                    <button type="submit" id="btn-submit" class="flex-1 bg-purple-700 hover:bg-purple-800 text-white font-medium py-2.5 rounded-xl text-sm transition shadow-sm cursor-pointer">
-                        Salvar no Caderno
-                    </button>
-                    <button type="button" id="btn-cancelar-edicao" onclick="cancelarEdicao()" class="hidden bg-gray-200 hover:bg-gray-300 text-gray-700 font-medium px-4 py-2.5 rounded-xl text-sm transition cursor-pointer">
-                        Cancelar
-                    </button>
-                </div>
-            </form>
-        </section>
- 
-        <section class="space-y-3 nao-imprimir">
-            <div class="flex justify-between items-center px-1">
-                <h3 class="text-sm font-bold text-gray-800">Comprovantes do mês</h3>
-                <span id="contador-itens" class="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full font-medium">0 itens</span>
-            </div>
- 
-            <div id="lista-gastos" class="space-y-3"></div>
-        </section>
- 
-        <div class="pt-2 flex flex-col space-y-3 nao-imprimir">
-            <button onclick="gerarRelatorio()" class="w-full max-w-xs mx-auto bg-purple-700 hover:bg-purple-800 text-white font-medium py-2.5 px-6 rounded-xl text-sm transition shadow-md flex items-center justify-center space-x-2 cursor-pointer">
-                <span>📄</span>
-                <span>Gerar Relatório PDF do Mês</span>
+        
+        <div class="space-y-4">
+            <input type="text" id="mes" placeholder="Mês (Ex: Jul/2026)" class="w-full border p-2 rounded focus:ring-2 focus:ring-purple-500 outline-none">
+            <input type="number" id="pensao" placeholder="Pensão Recebida (R$)" class="w-full border p-2 rounded focus:ring-2 focus:ring-purple-500 outline-none">
+            <button onclick="cadastrarGasto()" class="w-full bg-purple-600 text-white p-3 rounded-lg font-bold hover:bg-purple-700 transition shadow-md">Adicionar Gasto</button>
+            <button onclick="salvarNoGoogleDrive()" class="w-full bg-emerald-600 text-white p-3 rounded-lg font-bold hover:bg-emerald-700 transition shadow-md flex items-center justify-center gap-2">
+                <span>Salvar no Google Drive</span>
             </button>
+            <button onclick="gerarPDF()" class="w-full bg-black text-white p-3 rounded-lg hover:bg-gray-800 transition">Gerar Relatório PDF</button>
+            <button onclick="exportarDados()" class="w-full bg-blue-500 text-white p-3 rounded-lg hover:bg-blue-600 transition">Exportar Backup Local (.json)</button>
         </div>
- 
-    </main>
- 
+
+        <div id="lista" class="mt-6 space-y-2"></div>
+    </div>
+
     <script>
-        // ===================== ESTADO =====================
-        const LS_KEY = 'prestacao_contas_dados_v2';
-        let dadosApp = JSON.parse(localStorage.getItem(LS_KEY) || '{}');
-        let imagemBase64Atual = '';
-        let fotosExtrasArray = [];
-        let dirHandle = null;
-        let dirStatus = 'verificando'; // verificando | conectado | pendente | desconectado | nao-suportado
-        let ultimaGravacao = null;
+        let gastos = JSON.parse(localStorage.getItem('gastos') || '[]');
+        let accessToken = null;
 
-        // CHAVE DA API DO GOOGLE GEMINI AQUI:
-        const GEMINI_API_KEY = "COLE_SUA_CHAVE_AQUI_PARA_FUNCIONAR_FORA_DAQUI";
- 
-        const mesRefInput = document.getElementById('mes-ref');
-        const valorPensaInput = document.getElementById('valor-pensao');
-        const fotoInput = document.getElementById('foto-input');
-        const fotosExtrasInput = document.getElementById('fotos-extras-input');
-        const imgPreview = document.getElementById('img-preview');
-        const previewContainer = document.getElementById('preview-container');
-        const uploadPlaceholder = document.getElementById('upload-placeholder');
-        const listaExtrasPreview = document.getElementById('lista-extras-preview');
-        const gastoForm = document.getElementById('gasto-form');
-        const inputImportar = document.getElementById('input-importar');
- 
-        // ===================== HELPERS =====================
-        function mostrarToast(mensagem, icone = '✨') {
-            const toast = document.getElementById('toast');
-            document.getElementById('toast-icon').innerText = icone;
-            document.getElementById('toast-msg').innerText = mensagem;
-            toast.classList.remove('-translate-y-24', 'opacity-0');
-            setTimeout(() => toast.classList.add('-translate-y-24', 'opacity-0'), 3500);
-        }
- 
-        function abrirZoom(src) {
-            document.getElementById('img-zoom-conteudo').src = src;
-            document.getElementById('modal-zoom').classList.remove('hidden');
-            document.getElementById('modal-zoom').classList.add('flex');
-        }
-        function fecharZoom() {
-            document.getElementById('modal-zoom').classList.add('hidden');
-            document.getElementById('modal-zoom').classList.remove('flex');
-        }
- 
-        function obterMesAtual() { return mesRefInput.value || 'Jul/2026'; }
-        function formatarMoeda(valor) { return (valor || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }); }
-        function formatarDataBR(iso) {
-            if (!iso) return '';
-            const [a, m, d] = iso.split('-');
-            return `${d}/${m}/${a}`;
-        }
-        function escapeHtml(str) {
-            const div = document.createElement('div');
-            div.innerText = str || '';
-            return div.innerHTML;
-        }
- 
-        // Comprime a imagem antes de guardar/enviar pra IA — mantém boa leitura, arquivo leve
-        function comprimirImagem(file, maxWidth = 1400, quality = 0.75) {
-            return new Promise((resolve, reject) => {
-                const reader = new FileReader();
-                reader.onload = (e) => {
-                    const img = new Image();
-                    img.onload = () => {
-                        let { width, height } = img;
-                        if (width > maxWidth) {
-                            height = Math.round(height * (maxWidth / width));
-                            width = maxWidth;
-                        }
-                        const canvas = document.createElement('canvas');
-                        canvas.width = width;
-                        canvas.height = height;
-                        canvas.getContext('2d').drawImage(img, 0, 0, width, height);
-                        resolve(canvas.toDataURL('image/jpeg', quality));
-                    };
-                    img.onerror = reject;
-                    img.src = e.target.result;
-                };
-                reader.onerror = reject;
-                reader.readAsDataURL(file);
-            });
-        }
- 
-        // ===================== PERSISTÊNCIA =====================
-        function persistirDados() {
-            localStorage.setItem(LS_KEY, JSON.stringify(dadosApp)); // cache local instantâneo
-            salvarNaPastaConectada(); // autosave (se conectado)
-            atualizarBadgeSync();
-        }
- 
-        function abrirDB() {
-            return new Promise((resolve, reject) => {
-                const req = indexedDB.open('prestacaoContasFS', 1);
-                req.onupgradeneeded = () => req.result.createObjectStore('handles');
-                req.onsuccess = () => resolve(req.result);
-                req.onerror = () => reject(req.error);
-            });
-        }
-        async function idbSetHandle(key, handle) {
-            const db = await abrirDB();
-            return new Promise((resolve, reject) => {
-                const tx = db.transaction('handles', 'readwrite');
-                tx.objectStore('handles').put(handle, key);
-                tx.oncomplete = () => resolve();
-                tx.onerror = () => reject(tx.error);
-            });
-        }
-        async function idbGetHandle(key) {
-            const db = await abrirDB();
-            return new Promise((resolve, reject) => {
-                const tx = db.transaction('handles', 'readonly');
-                const req = tx.objectStore('handles').get(key);
-                req.onsuccess = () => resolve(req.result);
-                req.onerror = () => reject(req.error);
-            });
-        }
- 
-        const NOME_ARQUIVO = 'prestacao_contas_dados.json';
- 
-        async function conectarPasta() {
-            if (!('showDirectoryPicker' in window)) {
-                mostrarToast('Esse recurso de auto-save funciona no Chrome/Edge do computador.', '⚠️');
-                return;
-            }
-            try {
-                const handle = await window.showDirectoryPicker({ mode: 'readwrite' });
-                dirHandle = handle;
-                await idbSetHandle('pastaPrincipal', handle);
-                await carregarOuCriarArquivoNaPasta();
-                dirStatus = 'conectado';
-                renderizarTela();
-                mostrarToast('Pasta conectada! Autosave ativado.', '☁️');
-            } catch (e) {
-                if (e.name !== 'AbortError') mostrarToast('Não foi possível conectar a pasta.', '⚠️');
-            }
-            atualizarBadgeSync();
-        }
- 
-        async function carregarOuCriarArquivoNaPasta() {
-            try {
-                const fileHandle = await dirHandle.getFileHandle(NOME_ARQUIVO, { create: true });
-                const file = await fileHandle.getFile();
-                const texto = await file.text();
-                if (texto && texto.trim()) {
-                    const dadosArquivo = JSON.parse(texto);
-                    if (dadosArquivo && Object.keys(dadosArquivo).length > 0) {
-                        dadosApp = dadosArquivo;
-                        localStorage.setItem(LS_KEY, JSON.stringify(dadosApp));
+        // Configuração do Google OAuth (Substitua 'SEU_CLIENT_ID' pelo seu ID de Cliente gerado no Google Cloud Console)
+        const CLIENT_ID = 'SEU_CLIENT_ID.apps.googleusercontent.com';
+        const SCOPES = 'https://www.googleapis.com/auth/drive.file';
+
+        function loginGoogle() {
+            const client = google.accounts.oauth2.initTokenClient({
+                client_id: CLIENT_ID,
+                scope: SCOPES,
+                callback: (response) => {
+                    if (response.error !== undefined) {
+                        alert('Erro ao conectar com o Google');
+                        return;
                     }
-                } else {
-                    await salvarNaPastaConectada();
-                }
-            } catch (e) { console.error('Erro ao ler arquivo da pasta:', e); }
-        }
- 
-        async function salvarNaPastaConectada() {
-            if (!dirHandle) return;
-            try {
-                const perm = await dirHandle.queryPermission({ mode: 'readwrite' });
-                if (perm !== 'granted') { dirStatus = 'pendente'; atualizarBadgeSync(); return; }
-                const fileHandle = await dirHandle.getFileHandle(NOME_ARQUIVO, { create: true });
-                const writable = await fileHandle.createWritable();
-                await writable.write(JSON.stringify(dadosApp, null, 2));
-                await writable.close();
-                dirStatus = 'conectado';
-                ultimaGravacao = new Date();
-            } catch (e) {
-                console.error('Erro ao salvar na pasta:', e);
-                dirStatus = 'erro';
-            }
-            atualizarBadgeSync();
-        }
- 
-        async function reconectarPermissao() {
-            if (!dirHandle) return conectarPasta();
-            try {
-                const perm = await dirHandle.requestPermission({ mode: 'readwrite' });
-                if (perm === 'granted') {
-                    await carregarOuCriarArquivoNaPasta();
-                    dirStatus = 'conectado';
-                    renderizarTela();
-                    mostrarToast('Pasta reconectada!', '☁️');
-                } else {
-                    mostrarToast('Permissão não concedida.', '⚠️');
-                }
-            } catch (e) { mostrarToast('Erro ao reconectar. Conecte a pasta novamente.', '⚠️'); }
-            atualizarBadgeSync();
-        }
- 
-        async function tentarReconectarAoAbrir() {
-            if (!('showDirectoryPicker' in window)) { dirStatus = 'nao-suportado'; atualizarBadgeSync(); return; }
-            try {
-                const handle = await idbGetHandle('pastaPrincipal');
-                if (!handle) { dirStatus = 'desconectado'; atualizarBadgeSync(); return; }
-                dirHandle = handle;
-                const perm = await handle.queryPermission({ mode: 'readwrite' });
-                if (perm === 'granted') {
-                    await carregarOuCriarArquivoNaPasta();
-                    dirStatus = 'conectado';
-                    renderizarTela();
-                } else {
-                    dirStatus = 'pendente';
-                }
-            } catch (e) { dirStatus = 'desconectado'; }
-            atualizarBadgeSync();
-        }
- 
-        function atualizarBadgeSync() {
-            const el = document.getElementById('status-sync');
-            const btnConectar = document.getElementById('btn-conectar-pasta');
-            const btnReconectar = document.getElementById('btn-reconectar-pasta');
-            btnConectar.classList.add('hidden');
-            btnReconectar.classList.add('hidden');
- 
-            if (dirStatus === 'conectado') {
-                const hora = ultimaGravacao ? ultimaGravacao.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '';
-                el.innerHTML = `<p class="text-xs text-purple-200">☁️ Sincronizado automaticamente${hora ? ' às ' + hora : ''}</p>`;
-            } else if (dirStatus === 'pendente') {
-                el.innerHTML = `<p class="text-xs text-amber-300">⚠️ Reconecte a pasta de salvamento</p>`;
-                btnReconectar.classList.remove('hidden');
-            } else if (dirStatus === 'nao-suportado') {
-                el.innerHTML = `<p class="text-xs text-purple-200">📱 Celular: Use a Exportação manual para salvar no Drive</p>`;
-            } else {
-                el.innerHTML = `<p class="text-xs text-purple-200">☁️ Sincronização automática desativada</p>`;
-                btnConectar.classList.remove('hidden');
-            }
-        }
- 
-        // Salvar via menu de compartilhamento nativo
-        async function compartilharGoogleDrive() {
-            const dataStr = JSON.stringify(dadosApp, null, 2);
-            const blob = new Blob([dataStr], { type: 'application/json' });
-            const file = new File([blob], NOME_ARQUIVO, { type: 'application/json' });
-            if (navigator.canShare && navigator.canShare({ files: [file] })) {
-                try {
-                    await navigator.share({ files: [file], title: 'Backup Prestação de Contas' });
-                    mostrarToast('Arquivo exportado.', '📤');
-                } catch (e) { /* user cancelled */ }
-            } else {
-                const a = document.createElement('a');
-                a.href = URL.createObjectURL(blob);
-                a.download = NOME_ARQUIVO;
-                document.body.appendChild(a);
-                a.click();
-                document.body.removeChild(a);
-                mostrarToast('Baixe o arquivo e guarde.', '📥');
-            }
-        }
- 
-        inputImportar.addEventListener('change', async function (e) {
-            const file = e.target.files[0];
-            if (!file) return;
-            try {
-                const texto = await file.text();
-                const dadosImportados = JSON.parse(texto);
-                if (!confirm('Substituir os dados deste dispositivo pelo backup importado?')) return;
-                dadosApp = dadosImportados;
-                persistirDados();
-                carregarDadosMes();
-                mostrarToast('Backup importado com sucesso!', '✅');
-            } catch (err) {
-                mostrarToast('Arquivo inválido.', '⚠️');
-            }
-            inputImportar.value = '';
-        });
- 
-        // ===================== MÊS / PENSÃO =====================
-        function carregarDadosMes() {
-            const mes = obterMesAtual();
-            if (!dadosApp[mes]) dadosApp[mes] = { pensao: 0, gastos: [] };
-            valorPensaInput.value = formatarMoeda(dadosApp[mes].pensao || 0);
-            renderizarTela();
-        }
-        mesRefInput.addEventListener('change', carregarDadosMes);
- 
-        valorPensaInput.addEventListener('input', (e) => {
-            let val = e.target.value.replace(/\D/g, '');
-            let num = (parseFloat(val) || 0) / 100;
-            valorPensaInput.value = formatarMoeda(num);
-            const mes = obterMesAtual();
-            if (!dadosApp[mes]) dadosApp[mes] = { pensao: 0, gastos: [] };
-            dadosApp[mes].pensao = num;
-            persistirDados();
-            atualizarResumo();
-        });
- 
-        // ===================== FOTOS E IA GEMINI =====================
-        fotosExtrasInput.addEventListener('change', async function (e) {
-            const files = Array.from(e.target.files);
-            for (const file of files) {
-                const base64 = await comprimirImagem(file);
-                fotosExtrasArray.push(base64);
-                const thumb = document.createElement('img');
-                thumb.src = base64;
-                thumb.className = "w-14 h-14 object-cover rounded-lg border border-purple-200 cursor-pointer";
-                thumb.onclick = () => abrirZoom(base64);
-                listaExtrasPreview.appendChild(thumb);
-            }
-            e.target.value = '';
-        });
- 
-        // IMPLEMENTAÇÃO GEMINI API
-        async function chamarIAComRetry(base64DataUrl, tentativa = 1) {
-            const base64Data = base64DataUrl.split(',')[1];
-            
-            // Usando Gemini em vez do Claude
-            const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`;
-            const promptSistema = "Extraia dados do comprovante. Responda APENAS um JSON puro, sem crases, exato: {\"data\":\"YYYY-MM-DD\",\"valor\":0.00,\"categoria\":\"curta\",\"justificativa\":\"descricao basica\"}.";
-
-            const payload = {
-                contents: [{ role: "user", parts: [{ text: "Extraia:" }, { inlineData: { mimeType: "image/jpeg", data: base64Data } }] }],
-                systemInstruction: { parts: [{ text: promptSistema }] },
-                generationConfig: { responseMimeType: "application/json" }
-            };
-
-            try {
-                // Se a chave não for fornecida, levanta erro para não travar
-                if(GEMINI_API_KEY.includes("COLE_SUA_CHAVE")) throw new Error("Sem Chave API");
-
-                const response = await fetch(url, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload)
-                });
-                
-                if (!response.ok) throw new Error('Erro na API');
-                
-                const result = await response.json();
-                let texto = result.candidates?.[0]?.content?.parts?.[0]?.text || "{}";
-                return JSON.parse(texto);
-            } catch (error) {
-                if (error.message === "Sem Chave API") throw error;
-                if (tentativa <= 2) {
-                    await new Promise(r => setTimeout(r, Math.pow(2, tentativa) * 1000));
-                    return chamarIAComRetry(base64DataUrl, tentativa + 1);
-                }
-                throw error;
-            }
-        }
- 
-        fotoInput.addEventListener('change', async function (e) {
-            const file = e.target.files[0];
-            if (!file) return;
-            const base64 = await comprimirImagem(file);
-            imagemBase64Atual = base64;
-            imgPreview.src = base64;
-            imgPreview.onclick = () => abrirZoom(base64);
-            previewContainer.classList.remove('hidden');
-            uploadPlaceholder.classList.add('hidden');
- 
-            mostrarToast('IA analisando o comprovante...', '🤖');
-            try {
-                const dadosExtraidos = await chamarIAComRetry(base64);
-                if (dadosExtraidos.data) document.getElementById('campo-data').value = dadosExtraidos.data;
-                if (dadosExtraidos.valor) document.getElementById('campo-valor').value = dadosExtraidos.valor;
-                if (dadosExtraidos.categoria) document.getElementById('campo-categoria').value = dadosExtraidos.categoria;
-                if (dadosExtraidos.justificativa) document.getElementById('campo-justificativa').value = dadosExtraidos.justificativa;
-                mostrarToast('Comprovante lido com sucesso!', '✅');
-            } catch (err) {
-                if(err.message === "Sem Chave API"){
-                    mostrarToast('O desenvolvedor precisa inserir a chave da API da IA.', '⚠️');
-                } else {
-                    mostrarToast('Não consegui ler. Preencha manualmente.', '⚠️');
-                }
-            }
-        });
- 
-        // ===================== FORM =====================
-        gastoForm.addEventListener('submit', function (e) {
-            e.preventDefault();
-            const mes = obterMesAtual();
-            const editId = document.getElementById('edit-id').value;
- 
-            const dadosGasto = {
-                id: editId ? Number(editId) : Date.now(),
-                data: document.getElementById('campo-data').value,
-                valor: parseFloat(document.getElementById('campo-valor').value) || 0,
-                categoria: document.getElementById('campo-categoria').value,
-                local: document.getElementById('campo-local').value,
-                justificativa: document.getElementById('campo-justificativa').value,
-                foto: imagemBase64Atual,
-                fotosExtras: [...fotosExtrasArray]
-            };
- 
-            if (editId) {
-                const index = dadosApp[mes].gastos.findIndex(g => g.id === Number(editId));
-                if (index !== -1) {
-                    if (!imagemBase64Atual && dadosApp[mes].gastos[index].foto) dadosGasto.foto = dadosApp[mes].gastos[index].foto;
-                    if (fotosExtrasArray.length === 0 && dadosApp[mes].gastos[index].fotosExtras) dadosGasto.fotosExtras = dadosApp[mes].gastos[index].fotosExtras;
-                    dadosApp[mes].gastos[index] = dadosGasto;
-                }
-                mostrarToast('Gasto atualizado!', '✏️');
-            } else {
-                dadosApp[mes].gastos.push(dadosGasto);
-                mostrarToast('Adicionado ao caderno!', '📁');
-            }
- 
-            persistirDados();
-            renderizarTela();
-            cancelarEdicao();
-        });
- 
-        function editarGasto(id) {
-            const mes = obterMesAtual();
-            const gasto = dadosApp[mes].gastos.find(g => g.id === id);
-            if (!gasto) return;
- 
-            document.getElementById('edit-id').value = gasto.id;
-            document.getElementById('campo-data').value = gasto.data;
-            document.getElementById('campo-valor').value = gasto.valor;
-            document.getElementById('campo-categoria').value = gasto.categoria;
-            document.getElementById('campo-local').value = gasto.local;
-            document.getElementById('campo-justificativa').value = gasto.justificativa;
- 
-            if (gasto.foto) {
-                imagemBase64Atual = gasto.foto;
-                imgPreview.src = gasto.foto;
-                imgPreview.onclick = () => abrirZoom(gasto.foto);
-                previewContainer.classList.remove('hidden');
-                uploadPlaceholder.classList.add('hidden');
-            }
- 
-            fotosExtrasArray = gasto.fotosExtras ? [...gasto.fotosExtras] : [];
-            listaExtrasPreview.innerHTML = '';
-            fotosExtrasArray.forEach(ext => {
-                const thumb = document.createElement('img');
-                thumb.src = ext;
-                thumb.className = "w-14 h-14 object-cover rounded-lg border border-purple-200 cursor-pointer";
-                thumb.onclick = () => abrirZoom(ext);
-                listaExtrasPreview.appendChild(thumb);
+                    accessToken = response.access_token;
+                    document.getElementById('btn-login').innerText = 'Google Conectado ✅';
+                    document.getElementById('btn-login').className = 'text-xs bg-emerald-100 text-emerald-800 px-3 py-1 rounded-full font-semibold';
+                    alert('Conta Google conectada com sucesso!');
+                },
             });
- 
-            document.getElementById('form-titulo').innerHTML = '<span>✏️ Editando Comprovante</span>';
-            document.getElementById('btn-submit').innerText = 'Salvar Alterações';
-            document.getElementById('btn-cancelar-edicao').classList.remove('hidden');
-            window.scrollTo({ top: 0, behavior: 'smooth' });
+            client.requestAccessToken();
         }
- 
-        function cancelarEdicao() {
-            gastoForm.reset();
-            document.getElementById('edit-id').value = '';
-            previewContainer.classList.add('hidden');
-            uploadPlaceholder.classList.remove('hidden');
-            listaExtrasPreview.innerHTML = '';
-            imagemBase64Atual = '';
-            fotosExtrasArray = [];
-            document.getElementById('form-titulo').innerHTML = '<span>📸 Novo Comprovante</span>';
-            document.getElementById('btn-submit').innerText = 'Salvar no Caderno';
-            document.getElementById('btn-cancelar-edicao').classList.add('hidden');
-        }
- 
-        function deletarGasto(id) {
-            if (confirm('Tem certeza que deseja excluir este comprovante?')) {
-                const mes = obterMesAtual();
-                dadosApp[mes].gastos = dadosApp[mes].gastos.filter(g => g.id !== id);
-                persistirDados();
-                renderizarTela();
-                mostrarToast('Registro removido.', '🗑️');
-            }
-        }
- 
-        // ===================== RENDER =====================
-        function atualizarResumo() {
-            const mes = obterMesAtual();
-            const info = dadosApp[mes] || { pensao: 0, gastos: [] };
-            const totalGasto = info.gastos.reduce((acc, curr) => acc + curr.valor, 0);
-            const saldo = (info.pensao || 0) - totalGasto;
-            document.getElementById('resumo-gasto').innerText = formatarMoeda(totalGasto);
-            const saldoEl = document.getElementById('resumo-saldo');
-            saldoEl.innerText = formatarMoeda(saldo);
-            saldoEl.className = "font-bold text-base " + (saldo < 0 ? "text-red-300" : "text-white");
-        }
- 
-        function renderizarTela() {
-            const mes = obterMesAtual();
-            const info = dadosApp[mes] || { pensao: 0, gastos: [] };
-            const listaContainer = document.getElementById('lista-gastos');
-            document.getElementById('contador-itens').innerText = `${info.gastos.length} itens`;
- 
-            if (info.gastos.length === 0) {
-                listaContainer.innerHTML = `<div class="bg-white rounded-xl p-6 text-center border border-dashed border-gray-200"><p class="text-xs text-gray-400">Nenhum comprovante cadastrado para ${mes}.</p></div>`;
-                atualizarResumo();
+
+        async function salvarNoGoogleDrive() {
+            if (!accessToken) {
+                alert('Por favor, clique em "Conectar Google" antes de salvar no Drive.');
+                loginGoogle();
                 return;
             }
- 
-            listaContainer.innerHTML = '';
-            info.gastos.slice().sort((a, b) => (b.data || '').localeCompare(a.data || '')).forEach(gasto => {
-                const card = document.createElement('div');
-                card.className = "bg-white rounded-xl p-4 shadow-sm border border-gray-100 flex flex-col space-y-3 relative";
- 
-                let htmlExtras = '';
-                if (gasto.fotosExtras && gasto.fotosExtras.length > 0) {
-                    htmlExtras = `<div class="mt-2"><p class="text-[10px] text-gray-400 mb-1">Comprovantes Adicionais:</p><div class="flex flex-wrap gap-2">`;
-                    gasto.fotosExtras.forEach(ext => {
-                        htmlExtras += `<img src="${ext}" alt="Extra" onclick="abrirZoom('${ext}')" class="w-16 h-16 object-cover rounded-lg border border-gray-200 bg-gray-900 cursor-pointer hover:opacity-90">`;
-                    });
-                    htmlExtras += `</div></div>`;
+
+            const metadata = {
+                name: `Prestacao_Contas_${new Date().toISOString().split('T')[0]}.json`,
+                mimeType: 'application/json'
+            };
+
+            const fileContent = JSON.stringify(gastos, null, 2);
+            const form = new FormData();
+            form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
+            form.append('file', new Blob([fileContent], { type: 'application/json' }));
+
+            try {
+                const response = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', {
+                    method: 'POST',
+                    headers: new Headers({ 'Authorization': 'Bearer ' + accessToken }),
+                    body: form,
+                });
+
+                if (response.ok) {
+                    alert('Backup salvo com sucesso no seu Google Drive!');
+                } else {
+                    alert('Erro ao salvar no Google Drive. Verifique sua conexão.');
                 }
- 
-                card.innerHTML = `
-                    <div class="flex justify-between items-start">
-                        <div>
-                            <span class="text-[10px] uppercase tracking-wider font-semibold bg-purple-50 text-purple-700 px-2 py-0.5 rounded">${escapeHtml(gasto.categoria)}</span>
-                            <h4 class="font-bold text-gray-800 text-sm mt-1">${escapeHtml(gasto.local)}</h4>
-                            <p class="text-xs text-gray-500">${formatarDataBR(gasto.data)} • ${formatarMoeda(gasto.valor)}</p>
-                        </div>
-                        <div class="flex items-center space-x-2">
-                            <button onclick="editarGasto(${gasto.id})" class="text-gray-400 hover:text-purple-600 p-1.5 rounded-lg hover:bg-purple-50 transition cursor-pointer" title="Editar">✏️</button>
-                            <button onclick="deletarGasto(${gasto.id})" class="text-gray-400 hover:text-red-500 p-1.5 rounded-lg hover:bg-red-50 transition cursor-pointer" title="Excluir">🗑️</button>
-                        </div>
-                    </div>
-                    <p class="text-xs text-gray-600 bg-gray-50 p-2 rounded-lg italic">"${escapeHtml(gasto.justificativa)}"</p>
-                    ${gasto.foto ? `
-                        <div class="mt-1">
-                            <p class="text-[10px] text-gray-400 mb-1">Comprovante Principal (toque para ampliar):</p>
-                            <img src="${gasto.foto}" alt="Comprovante" onclick="abrirZoom('${gasto.foto}')" class="w-full h-40 object-contain rounded-lg border border-gray-200 bg-gray-900 cursor-pointer hover:opacity-95">
-                        </div>
-                    ` : ''}
-                    ${htmlExtras}
-                `;
-                listaContainer.appendChild(card);
-            });
- 
-            atualizarResumo();
+            } catch (error) {
+                console.error(error);
+                alert('Erro de conexão ao tentar salvar no Drive.');
+            }
         }
- 
-        // ===================== RELATÓRIO PDF =====================
-        function gerarRelatorio() {
-            const mes = obterMesAtual();
-            const info = dadosApp[mes] || { pensao: 0, gastos: [] };
-            const totalGasto = info.gastos.reduce((a, c) => a + c.valor, 0);
-            const saldo = (info.pensao || 0) - totalGasto;
-            const area = document.getElementById('area-impressao');
- 
-            let html = `
-                <div class="folha">
-                    <h1 style="font-size:22px;font-weight:800;margin-bottom:4px;">Prestação de Contas</h1>
-                    <p style="color:#666;margin-bottom:24px;font-size:13px;">Referência: ${escapeHtml(mes)} • Gerado em ${new Date().toLocaleDateString('pt-BR')}</p>
-                    <table style="width:100%;border-collapse:collapse;font-size:13px;">
-                        <tr><td style="padding:8px 0;color:#666;border-bottom:1px solid #eee;">Pensão do mês</td><td style="padding:8px 0;text-align:right;font-weight:600;border-bottom:1px solid #eee;">${formatarMoeda(info.pensao || 0)}</td></tr>
-                        <tr><td style="padding:8px 0;color:#666;border-bottom:1px solid #eee;">Total gasto</td><td style="padding:8px 0;text-align:right;font-weight:600;border-bottom:1px solid #eee;">${formatarMoeda(totalGasto)}</td></tr>
-                        <tr><td style="padding:8px 0;color:#666;border-bottom:1px solid #eee;">Saldo</td><td style="padding:8px 0;text-align:right;font-weight:700;color:${saldo < 0 ? '#dc2626' : '#111'};border-bottom:1px solid #eee;">${formatarMoeda(saldo)}</td></tr>
-                        <tr><td style="padding:8px 0;color:#666;">Nº de comprovantes</td><td style="padding:8px 0;text-align:right;font-weight:600;">${info.gastos.length}</td></tr>
-                    </table>
-                </div>
-            `;
- 
-            info.gastos.slice().sort((a, b) => (a.data || '').localeCompare(b.data || '')).forEach((g, idx) => {
-                let imagens = '';
-                if (g.foto) imagens += `<img src="${g.foto}" style="max-width:100%;max-height:340px;object-fit:contain;border:1px solid #ddd;border-radius:6px;margin-top:12px;display:block;">`;
-                if (g.fotosExtras && g.fotosExtras.length) {
-                    imagens += `<div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:10px;">`;
-                    g.fotosExtras.forEach(f => imagens += `<img src="${f}" style="width:130px;height:130px;object-fit:cover;border:1px solid #ddd;border-radius:6px;">`);
-                    imagens += `</div>`;
-                }
-                html += `
-                    <div class="folha">
-                        <p style="font-size:11px;color:#999;margin-bottom:6px;">Comprovante ${idx + 1} de ${info.gastos.length}</p>
-                        <div style="display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #6d28d9;padding-bottom:10px;margin-bottom:10px;">
-                            <div>
-                                <span style="font-size:10px;text-transform:uppercase;letter-spacing:0.05em;background:#f3e8ff;color:#6d28d9;padding:2px 8px;border-radius:4px;">${escapeHtml(g.categoria)}</span>
-                                <h2 style="font-size:16px;font-weight:700;margin-top:6px;">${escapeHtml(g.local)}</h2>
-                                <p style="font-size:12px;color:#666;">${formatarDataBR(g.data)}</p>
-                            </div>
-                            <div style="font-size:18px;font-weight:700;color:#6d28d9;white-space:nowrap;">${formatarMoeda(g.valor)}</div>
-                        </div>
-                        <p style="font-size:13px;color:#444;background:#f9f9f9;padding:10px;border-radius:6px;font-style:italic;">"${escapeHtml(g.justificativa)}"</p>
-                        ${imagens}
-                    </div>
-                `;
-            });
- 
-            area.innerHTML = html;
-            setTimeout(() => window.print(), 100);
+
+        function cadastrarGasto() {
+            const mesInput = document.getElementById('mes').value;
+            const valor = parseFloat(document.getElementById('pensao').value) || 0;
+            
+            if (!mesInput) {
+                alert('Por favor, informe o mês.');
+                return;
+            }
+
+            const gasto = {
+                data: new Date().toLocaleDateString(),
+                valor: valor,
+                descricao: 'Gasto de ' + mesInput
+            };
+            gastos.push(gasto);
+            localStorage.setItem('gastos', JSON.stringify(gastos));
+            
+            // Limpa os campos
+            document.getElementById('mes').value = '';
+            document.getElementById('pensao').value = '';
+            renderizar();
         }
- 
-        // ===================== INICIALIZAÇÃO =====================
-        carregarDadosMes();
-        tentarReconectarAoAbrir();
+
+        function renderizar() {
+            const lista = document.getElementById('lista');
+            lista.innerHTML = gastos.map(g => `<div class="p-3 bg-gray-50 border rounded-lg flex justify-between items-center">
+                <span class="text-gray-700">${g.descricao}</span>
+                <span class="font-bold text-gray-900">R$ ${g.valor.toFixed(2)}</span>
+            </div>`).join('');
+        }
+
+        function exportarDados() {
+            const blob = new Blob([JSON.stringify(gastos, null, 2)], {type: 'application/json'});
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = 'backup_contas.json';
+            a.click();
+        }
+
+        function gerarPDF() { 
+            window.print(); 
+        }
+
+        renderizar();
     </script>
 </body>
 </html>
