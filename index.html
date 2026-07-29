@@ -13,11 +13,14 @@
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
         body { font-family: 'Inter', sans-serif; }
         #area-impressao { display: none; }
+        
         @media print {
             body * { visibility: hidden; }
             #area-impressao, #area-impressao * { visibility: visible; }
             #area-impressao { display: block; position: absolute; top: 0; left: 0; width: 100%; }
+            /* Força a quebra de página APÓS a capa do resumo */
             .folha-capa { page-break-after: always; padding: 28px; }
+            /* Evita que um recibo seja cortado no meio, se possível */
             .comprovante-box { page-break-inside: avoid; margin-bottom: 24px; padding-bottom: 24px; border-bottom: 2px dashed #ccc; }
         }
     </style>
@@ -241,12 +244,17 @@
         }
 
         function obterMesAtual() { return mesRefInput.value || 'Jul/2026'; }
-        function formatarMoeda(valor) { return (valor || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }); }
+        
+        function formatarMoeda(valor) { 
+            return (valor || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }); 
+        }
+        
         function formatarDataBR(iso) {
             if (!iso) return '';
             const [a, m, d] = iso.split('-');
             return `${d}/${m}/${a}`;
         }
+        
         function escapeHtml(str) {
             const div = document.createElement('div');
             div.innerText = str || '';
@@ -279,7 +287,6 @@
         }
 
         const NOME_ARQUIVO = 'prestacao_contas_dados.json';
-
         let tokenClient = null;
         let googleAccessToken = null;
         let driveFileId = null;
@@ -305,7 +312,7 @@
 
         function entrarComGoogle() {
             if (!garantirTokenClient()) {
-                mostrarToast('Carregando login do Google, tente de novo em instantes.', '⏳');
+                mostrarToast('Carregando login, tente novamente.', '⏳');
                 return;
             }
             tokenClient.requestAccessToken({ prompt: googleAccessToken ? '' : 'consent' });
@@ -363,26 +370,134 @@
 
         async function sincronizarComDrive() {
             try {
+                await localizarOuCriarArquivoDrive();
+                const resp = await chamarDriveAPI(`https://www.googleapis.com/drive/v3/files/${driveFileId}?alt=media`);
+                const texto = await resp.text();
+                if (texto && texto.trim()) {
+                    const dadosDrive = JSON.parse(texto);
+                    if (dadosDrive && Object.keys(dadosDrive).length > 0) {
+                        dadosApp = dadosDrive;
+                        localStorage.setItem(LS_KEY, JSON.stringify(dadosApp));
+                        carregarDadosMes();
+                    }
+                }
+                marcarBackupFeito();
+                mostrarToast('Sincronizado com o Google Drive!', '☁️');
+            } catch (e) {
+                mostrarToast('Erro ao sincronizar.', '⚠️');
+            }
+        }
+
+        async function salvarNoDrive() {
+            if (!googleAccessToken || !driveFileId) return;
+            try {
+                await chamarDriveAPI(`https://www.googleapis.com/upload/drive/v3/files/${driveFileId}?uploadType=media`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(dadosApp)
+                });
+                marcarBackupFeito();
+            } catch (e) { console.error(e); }
+        }
+
+        function salvarChaveGemini() {
+            const v = document.getElementById('gemini-key-input').value.trim();
+            if (!v) { mostrarToast('Cole a chave antes de salvar.', '⚠️'); return; }
+            localStorage.setItem('geminiApiKey', v);
+            mostrarToast('Chave da IA salva neste aparelho!', '🔑');
+        }
+
+        function persistirDados() {
+            localStorage.setItem(LS_KEY, JSON.stringify(dadosApp));
+            salvarNoDrive();
+            const contador = parseInt(localStorage.getItem('alteracoesDesdeBackup') || '0', 10) + 1;
+            localStorage.setItem('alteracoesDesdeBackup', String(contador));
+            atualizarStatusBackup();
+        }
+
+        function atualizarStatusBackup() {
+            const el = document.getElementById('status-sync');
+            const ts = localStorage.getItem('ultimoBackupTs');
+            const contador = parseInt(localStorage.getItem('alteracoesDesdeBackup') || '0', 10);
+            if (contador === 0 && ts) {
+                const data = new Date(parseInt(ts, 10));
+                el.innerHTML = `<p class="text-xs text-purple-200">✅ Backup em dia • ${data.toLocaleDateString('pt-BR')} ${data.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</p>`;
+            } else if (contador > 0) {
+                el.innerHTML = `<p class="text-xs text-amber-300">⚠️ ${contador} alteração(ões) desde o backup</p>`;
+            } else {
+                el.innerHTML = `<p class="text-xs text-purple-200">☁️ Nenhum backup feito ainda</p>`;
+            }
+        }
+
+        function marcarBackupFeito() {
+            localStorage.setItem('ultimoBackupTs', String(Date.now()));
+            localStorage.setItem('alteracoesDesdeBackup', '0');
+            atualizarStatusBackup();
+        }
+
+        async function compartilharGoogleDrive() {
+            const dataStr = JSON.stringify(dadosApp, null, 2);
+            const blob = new Blob([dataStr], { type: 'application/json' });
+            const file = new File([blob], NOME_ARQUIVO, { type: 'application/json' });
+            if (navigator.canShare && navigator.canShare({ files: [file] })) {
+                try {
+                    await navigator.share({ files: [file], title: 'Backup' });
+                    marcarBackupFeito();
+                } catch (e) { }
+            } else {
+                const a = document.createElement('a');
+                a.href = URL.createObjectURL(blob);
+                a.download = NOME_ARQUIVO;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                marcarBackupFeito();
+            }
+        }
+
+        inputImportar.addEventListener('change', async function (e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            try {
+                const texto = await file.text();
+                const dadosImportados = JSON.parse(texto);
+                if (!confirm('Substituir os dados deste dispositivo pelo backup importado?')) return;
+                dadosApp = dadosImportados;
+                persistirDados();
+                carregarDadosMes();
+                mostrarToast('Backup importado com sucesso!', '✅');
+            } catch (err) {
+                mostrarToast('Arquivo inválido.', '⚠️');
+            }
+            inputImportar.value = '';
+        });
+
+        async function chamarIAComRetry(base64DataUrl, tentativa = 1) {
+            const apiKey = localStorage.getItem('geminiApiKey');
+            if (!apiKey) {
+                mostrarToast('Salve sua Chave da IA (Gemini) no topo antes.', '🔑');
+                throw new Error('Chave não configurada');
+            }
+            const base64Data = base64DataUrl.split(',')[1];
+            const promptSistema = 'Você é um assistente financeiro. Extraia os dados do comprovante. Responda APENAS com um objeto JSON puro no formato exato: {"data":"YYYY-MM-DD","valor":0.00,"categoria":"categoria curta","justificativa":"breve justificativa baseada no item comprado"}. Se não identificar, use "" ou 0.';
+
+            try {
                 const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         contents: [{
                             parts: [
-                                { text: promptSistema + '\n\nExtraia os dados deste comprovante.' },
+                                { text: promptSistema },
                                 { inline_data: { mime_type: 'image/jpeg', data: base64Data } }
                             ]
                         }],
                         generationConfig: { responseMimeType: 'application/json' }
                     })
                 });
-                if (!response.ok) {
-                    const errBody = await response.text();
-                    console.error("Erro da API Gemini:", errBody);
-                    throw new Error('Erro API: ' + response.status);
-                }
+                if (!response.ok) throw new Error(`Erro API: ${response.status}`);
                 const data = await response.json();
-                let text = data.candidates && data.candidates[0] && data.candidates[0].content.parts[0].text || '{}';
+                let text = data.candidates[0].content.parts[0].text || '{}';
                 text = text.replace(/```json|```/g, '').trim();
                 return JSON.parse(text);
             } catch (error) {
@@ -392,6 +507,16 @@
                 }
                 throw error;
             }
+        }
+
+        // FOTOS PRINCIPAL E EXTRAS - (Aqui está a correção da tela)
+        function removerFotoPrincipal() {
+            imagemBase64Atual = '';
+            imgPreview.src = '';
+            previewContainer.classList.add('hidden');
+            uploadPlaceholder.classList.remove('hidden');
+            fotoInput.value = '';
+            mostrarToast('Foto removida.', '🗑️');
         }
 
         fotoInput.addEventListener('change', async function (e) {
@@ -404,23 +529,55 @@
             previewContainer.classList.remove('hidden');
             uploadPlaceholder.classList.add('hidden');
 
+            const apiKey = localStorage.getItem('geminiApiKey');
+            if(!apiKey) {
+                mostrarToast('Foto adicionada! (Cole a chave da IA acima para leitura automática).', '✅');
+                return;
+            }
+
             mostrarToast('IA analisando o comprovante...', '🤖');
             try {
                 const dadosExtraidos = await chamarIAComRetry(base64);
-                if (dadosExtraidos.data) document.getElementById('campo-data').value = normalizarData(dadosExtraidos.data);
-                if (dadosExtraidos.valor !== undefined && dadosExtraidos.valor !== null && dadosExtraidos.valor !== '') {
-                    document.getElementById('campo-valor').value = normalizarValor(dadosExtraidos.valor);
-                }
+                if (dadosExtraidos.data) document.getElementById('campo-data').value = dadosExtraidos.data;
+                if (dadosExtraidos.valor) document.getElementById('campo-valor').value = dadosExtraidos.valor;
                 if (dadosExtraidos.categoria) document.getElementById('campo-categoria').value = dadosExtraidos.categoria;
                 if (dadosExtraidos.justificativa) document.getElementById('campo-justificativa').value = dadosExtraidos.justificativa;
                 mostrarToast('Comprovante lido com sucesso!', '✅');
             } catch (err) {
                 console.error(err);
-                mostrarToast('Erro IA: ' + err.message, '⚠️');
+                mostrarToast('A IA não conseguiu ler. Preencha manualmente.', '⚠️');
             }
         });
 
-        // ===================== FORM =====================
+        // FUNÇÃO RE-INSERIDA: Garante que as fotos extras aparecem na tela na hora que você escolhe
+        function renderizarExtrasPreview() {
+            listaExtrasPreview.innerHTML = '';
+            fotosExtrasArray.forEach((base64, idx) => {
+                const wrapper = document.createElement('div');
+                wrapper.className = "relative";
+                wrapper.innerHTML = `
+                    <img src="${base64}" class="w-14 h-14 object-cover rounded-lg border border-purple-200 cursor-pointer">
+                    <button type="button" class="absolute -top-1.5 -right-1.5 bg-red-600 text-white text-[10px] w-4 h-4 rounded-full flex items-center justify-center cursor-pointer leading-none">✕</button>
+                `;
+                wrapper.querySelector('img').onclick = () => abrirZoom(base64);
+                wrapper.querySelector('button').onclick = () => {
+                    fotosExtrasArray.splice(idx, 1);
+                    renderizarExtrasPreview(); // Atualiza a tela após remover
+                };
+                listaExtrasPreview.appendChild(wrapper);
+            });
+        }
+
+        fotosExtrasInput.addEventListener('change', async function (e) {
+            const files = Array.from(e.target.files);
+            for (const file of files) {
+                const base64 = await comprimirImagem(file);
+                fotosExtrasArray.push(base64);
+            }
+            renderizarExtrasPreview(); // ISSO FAZ A FOTO APARECER NA TELA IMEDIATAMENTE
+            e.target.value = '';
+        });
+
         function salvarGasto() {
             const mes = obterMesAtual();
             const editId = document.getElementById('edit-id').value;
@@ -429,22 +586,25 @@
             const valorVal = parseFloat(document.getElementById('campo-valor').value);
             const categoriaVal = document.getElementById('campo-categoria').value.trim();
             const justificativaVal = document.getElementById('campo-justificativa').value.trim();
+            const localVal = document.getElementById('campo-local').value.trim();
 
-            if (!dataVal) { mostrarToast('Preencha a Data antes de salvar.', '⚠️'); return; }
-            if (!valorVal || valorVal <= 0) { mostrarToast('Preencha um Valor válido antes de salvar.', '⚠️'); return; }
-            if (!categoriaVal) { mostrarToast('Preencha a Categoria antes de salvar.', '⚠️'); return; }
-            if (!justificativaVal) { mostrarToast('Preencha a Justificativa antes de salvar.', '⚠️'); return; }
+            if (!dataVal || isNaN(valorVal) || !categoriaVal || !justificativaVal) {
+                mostrarToast('Preencha os campos obrigatórios.', '⚠️');
+                return;
+            }
 
             const dadosGasto = {
                 id: editId ? Number(editId) : Date.now(),
                 data: dataVal,
                 valor: valorVal,
                 categoria: categoriaVal,
-                local: document.getElementById('campo-local').value.trim(),
+                local: localVal,
                 justificativa: justificativaVal,
                 foto: imagemBase64Atual,
-                fotosExtras: [...fotosExtrasArray]
+                fotosExtras: [...fotosExtrasArray] // Salva as fotos extras selecionadas
             };
+
+            if (!dadosApp[mes]) dadosApp[mes] = { pensao: 0, gastos: [], extratos: [] };
 
             if (editId) {
                 const index = dadosApp[mes].gastos.findIndex(g => g.id === Number(editId));
@@ -473,13 +633,12 @@
             document.getElementById('campo-data').value = gasto.data;
             document.getElementById('campo-valor').value = gasto.valor;
             document.getElementById('campo-categoria').value = gasto.categoria;
-            document.getElementById('campo-local').value = gasto.local;
+            document.getElementById('campo-local').value = gasto.local || '';
             document.getElementById('campo-justificativa').value = gasto.justificativa;
 
             if (gasto.foto) {
                 imagemBase64Atual = gasto.foto;
                 imgPreview.src = gasto.foto;
-                imgPreview.onclick = () => abrirZoom(gasto.foto);
                 previewContainer.classList.remove('hidden');
                 uploadPlaceholder.classList.add('hidden');
             }
@@ -496,11 +655,12 @@
         function cancelarEdicao() {
             gastoForm.reset();
             document.getElementById('edit-id').value = '';
+            imagemBase64Atual = '';
+            fotosExtrasArray = [];
+            imgPreview.src = '';
             previewContainer.classList.add('hidden');
             uploadPlaceholder.classList.remove('hidden');
             listaExtrasPreview.innerHTML = '';
-            imagemBase64Atual = '';
-            fotosExtrasArray = [];
             document.getElementById('form-titulo').innerHTML = '<span>📸 Novo Comprovante</span>';
             document.getElementById('btn-submit').innerText = 'Salvar no Caderno';
             document.getElementById('btn-cancelar-edicao').classList.add('hidden');
@@ -515,6 +675,22 @@
                 mostrarToast('Registro removido.', '🗑️');
             }
         }
+
+        function carregarDadosMes() {
+            const mes = obterMesAtual();
+            if (!dadosApp[mes]) dadosApp[mes] = { pensao: 0, gastos: [], extratos: [] };
+            valorPensaInput.value = dadosApp[mes].pensao || '';
+            renderizarTela();
+        }
+
+        mesRefInput.addEventListener('change', carregarDadosMes);
+        
+        valorPensaInput.addEventListener('input', (e) => {
+            const mes = obterMesAtual();
+            dadosApp[mes].pensao = parseFloat(e.target.value) || 0;
+            persistirDados();
+            atualizarResumo();
+        });
 
         function atualizarResumo() {
             const mes = obterMesAtual();
@@ -580,7 +756,6 @@
             atualizarResumo();
         }
 
-        // ===================== RELATÓRIO PDF =====================
         function gerarRelatorio() {
             const mes = obterMesAtual();
             const info = dadosApp[mes] || { pensao: 0, gastos: [] };
@@ -588,72 +763,60 @@
             const saldo = (info.pensao || 0) - totalGasto;
             const area = document.getElementById('area-impressao');
 
+            // Página 1: Apenas o Resumo (com quebra de página forçada no final)
             let html = `
                 <div class="folha-capa">
-                    <h1 style="font-size:22px;font-weight:800;margin-bottom:4px;">Prestação de Contas</h1>
-                    <p style="color:#666;margin-bottom:24px;font-size:13px;">Referência: ${escapeHtml(mes)} • Gerado em ${new Date().toLocaleDateString('pt-BR')}</p>
-                    <table style="width:100%;border-collapse:collapse;font-size:13px;">
-                        <tr><td style="padding:8px 0;color:#666;border-bottom:1px solid #eee;">Pensão do mês</td><td style="padding:8px 0;text-align:right;font-weight:600;border-bottom:1px solid #eee;">${formatarMoeda(info.pensao || 0)}</td></tr>
-                        <tr><td style="padding:8px 0;color:#666;border-bottom:1px solid #eee;">Total gasto</td><td style="padding:8px 0;text-align:right;font-weight:600;border-bottom:1px solid #eee;">${formatarMoeda(totalGasto)}</td></tr>
-                        <tr><td style="padding:8px 0;color:#666;border-bottom:1px solid #eee;">Saldo</td><td style="padding:8px 0;text-align:right;font-weight:700;color:${saldo < 0 ? '#dc2626' : '#111'};border-bottom:1px solid #eee;">${formatarMoeda(saldo)}</td></tr>
-                        <tr><td style="padding:8px 0;color:#666;">Nº de comprovantes</td><td style="padding:8px 0;text-align:right;font-weight:600;">${info.gastos.length}</td></tr>
+                    <h1 style="font-size:22px;font-weight:800;margin-bottom:20px;">Resumo do Mês - ${escapeHtml(mes)}</h1>
+                    <table style="width:100%;border-collapse:collapse;font-size:14px; margin-bottom: 30px;">
+                        <tr><td style="padding:12px 0;border-bottom:1px solid #eee;">Pensão Recebida</td><td style="padding:12px 0;text-align:right;font-weight:600;border-bottom:1px solid #eee;">${formatarMoeda(info.pensao || 0)}</td></tr>
+                        <tr><td style="padding:12px 0;border-bottom:1px solid #eee;">Total Gasto</td><td style="padding:12px 0;text-align:right;font-weight:600;border-bottom:1px solid #eee;">${formatarMoeda(totalGasto)}</td></tr>
+                        <tr><td style="padding:12px 0;border-bottom:1px solid #eee;">Saldo</td><td style="padding:12px 0;text-align:right;font-weight:700;color:${saldo < 0 ? '#dc2626' : '#111'};border-bottom:1px solid #eee;">${formatarMoeda(saldo)}</td></tr>
                     </table>
                 </div>
             `;
 
+            // Páginas Seguintes: Comprovantes
             info.gastos.slice().sort((a, b) => (a.data || '').localeCompare(b.data || '')).forEach((g, idx) => {
+                
+                // Junta a foto principal e as fotos extras em uma lista só
                 const imagensArr = [];
                 if (g.foto) imagensArr.push(g.foto);
                 if (g.fotosExtras && g.fotosExtras.length) imagensArr.push(...g.fotosExtras);
-                
-                let imagens = '';
+
+                let htmlImagens = '';
                 if (imagensArr.length > 0) {
-                    imagens = `<div style="display:flex; gap:10px; margin-top:12px; align-items:flex-start;">`;
+                    htmlImagens = `<div style="display: flex; justify-content: center; gap: 15px; width: 100%;">`;
                     imagensArr.forEach(img => {
-                        imagens += `<img src="${img}" style="max-height:220px; max-width:32%; object-fit:contain; border:1px solid #ddd; border-radius:4px;">`;
+                        // Removidas as bordas (caixinhas) e aumentado o limite de altura (75vh) para o print ficar maior e mais legível sem quebrar a página à toa.
+                        htmlImagens += `<img src="${img}" style="flex: 1; max-width: 100%; max-height: 75vh; object-fit: contain;">`;
                     });
-                    imagens += `</div>`;
+                    htmlImagens += `</div>`;
                 }
-                
+
+                // Layout exato solicitado: Cabeçalho em linha com dados não-negritos
                 html += `
                     <div class="comprovante-box">
-                        <div style="display:flex; justify-content:space-between; font-size:13px; font-weight:bold; border-bottom:1px solid #eee; padding-bottom:6px; margin-bottom:8px;">
-                            <span style="flex:1;">Categoria: <span style="font-weight:normal; color:#6d28d9;">${escapeHtml(g.categoria)}</span></span>
-                            <span style="flex:1; text-align:center;">Data: <span style="font-weight:normal;">${formatarDataBR(g.data)}</span></span>
-                            <span style="flex:1; text-align:right;">Valor: <span style="font-weight:normal; color:#6d28d9;">${formatarMoeda(g.valor)}</span></span>
+                        <div style="display: flex; justify-content: space-between; font-size: 14px; margin-bottom: 12px;">
+                            <span><strong>Categoria:</strong> <span style="font-weight: normal;">${escapeHtml(g.categoria)}</span></span>
+                            <span><strong>Local:</strong> <span style="font-weight: normal;">${escapeHtml(g.local || 'Não informado')}</span></span>
+                            <span><strong>Data:</strong> <span style="font-weight: normal;">${formatarDataBR(g.data)}</span></span>
+                            <span><strong>Valor:</strong> <span style="font-weight: normal;">${formatarMoeda(g.valor)}</span></span>
                         </div>
-                        <div style="font-size:13px; margin-bottom:12px; color:#333;">
-                            <strong>Local:</strong> <i style="color:#555;">${escapeHtml(g.local)}</i><br>
-                            <strong>Justificativa:</strong> <i>"${escapeHtml(g.justificativa)}"</i>
+                        <div style="font-size: 14px; margin-bottom: 15px;">
+                            <strong>Justificativa:</strong> <span style="font-weight: normal;">${escapeHtml(g.justificativa)}</span>
                         </div>
-                        ${imagens}
+                        
+                        <hr style="border: 0; border-top: 1px dashed #ccc; margin-bottom: 20px;">
+                        
+                        ${htmlImagens}
                     </div>
                 `;
             });
 
-            const extratos = info.extratos || [];
-            if (extratos.length > 0) {
-                html += `
-                    <div class="folha-capa" style="margin-top: 40px;">
-                        <h1 style="font-size:20px;font-weight:800;margin-bottom:6px;">📑 Extrato Bancário</h1>
-                        <p style="color:#666;font-size:13px;">Referência: ${escapeHtml(mes)} • ${extratos.length} página(s)</p>
-                    </div>
-                `;
-                extratos.forEach((ext, i) => {
-                    html += `
-                        <div class="folha-capa">
-                            <p style="font-size:11px;color:#999;margin-bottom:8px;">Extrato — página ${i + 1} de ${extratos.length}</p>
-                            <img src="${ext}" style="max-width:100%;max-height:900px;object-fit:contain;border:1px solid #ddd;border-radius:6px;display:block;margin:0 auto;">
-                        </div>
-                    `;
-                });
-            }
-
             area.innerHTML = html;
-            setTimeout(() => window.print(), 100);
+            setTimeout(() => window.print(), 200);
         }
 
-        // ===================== INICIALIZAÇÃO =====================
         const chaveGeminiSalva = localStorage.getItem('geminiApiKey');
         if (chaveGeminiSalva) document.getElementById('gemini-key-input').value = chaveGeminiSalva;
         carregarDadosMes();
