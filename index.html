@@ -17,8 +17,8 @@
             body * { visibility: hidden; }
             #area-impressao, #area-impressao * { visibility: visible; }
             #area-impressao { display: block; position: absolute; top: 0; left: 0; width: 100%; }
-            .folha { page-break-after: always; padding: 28px; }
-            .folha:last-child { page-break-after: auto; }
+            .folha-capa { page-break-after: always; padding: 28px; }
+            .comprovante-box { page-break-inside: avoid; margin-bottom: 24px; padding-bottom: 24px; border-bottom: 2px dashed #ccc; }
         }
     </style>
 </head>
@@ -363,246 +363,6 @@
 
         async function sincronizarComDrive() {
             try {
-                await localizarOuCriarArquivoDrive();
-                const resp = await chamarDriveAPI(`https://www.googleapis.com/drive/v3/files/${driveFileId}?alt=media`);
-                const texto = await resp.text();
-                if (texto && texto.trim()) {
-                    const dadosDrive = JSON.parse(texto);
-                    if (dadosDrive && Object.keys(dadosDrive).length > 0) {
-                        dadosApp = dadosDrive;
-                        localStorage.setItem(LS_KEY, JSON.stringify(dadosApp));
-                        carregarDadosMes();
-                    }
-                }
-                marcarBackupFeito();
-                mostrarToast('Dados sincronizados com o Google Drive!', '☁️');
-            } catch (e) {
-                console.error(e);
-                mostrarToast('Erro ao sincronizar com o Drive.', '⚠️');
-            }
-        }
-
-        async function salvarNoDrive() {
-            if (!googleAccessToken || !driveFileId) return;
-            try {
-                await chamarDriveAPI(`https://www.googleapis.com/upload/drive/v3/files/${driveFileId}?uploadType=media`, {
-                    method: 'PATCH',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(dadosApp)
-                });
-                marcarBackupFeito();
-            } catch (e) { console.error('Erro ao salvar no Drive:', e); }
-        }
-
-        function salvarChaveGemini() {
-            let v = document.getElementById('gemini-key-input').value.trim();
-            if (!v) { 
-                mostrarToast('Cole a chave antes de salvar.', '⚠️'); 
-                return; 
-            }
-            // Não bloqueia formatos novos de chave
-            localStorage.setItem('geminiApiKey', v);
-            mostrarToast('Chave da IA salva neste aparelho!', '🔑');
-        }
-
-        function persistirDados() {
-            localStorage.setItem(LS_KEY, JSON.stringify(dadosApp)); 
-            salvarNoDrive(); 
-            const contador = parseInt(localStorage.getItem('alteracoesDesdeBackup') || '0', 10) + 1;
-            localStorage.setItem('alteracoesDesdeBackup', String(contador));
-            atualizarStatusBackup();
-        }
-
-        function atualizarStatusBackup() {
-            const el = document.getElementById('status-sync');
-            const ts = localStorage.getItem('ultimoBackupTs');
-            const contador = parseInt(localStorage.getItem('alteracoesDesdeBackup') || '0', 10);
-            if (contador === 0 && ts) {
-                const data = new Date(parseInt(ts, 10));
-                el.innerHTML = `<p class="text-xs text-purple-200">✅ Backup em dia • salvo em ${data.toLocaleDateString('pt-BR')} às ${data.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</p>`;
-            } else if (contador > 0) {
-                el.innerHTML = `<p class="text-xs text-amber-300">⚠️ ${contador} alteração(ões) desde o último backup</p>`;
-            } else {
-                el.innerHTML = `<p class="text-xs text-purple-200">☁️ Nenhum backup feito ainda</p>`;
-            }
-        }
-
-        function marcarBackupFeito() {
-            localStorage.setItem('ultimoBackupTs', String(Date.now()));
-            localStorage.setItem('alteracoesDesdeBackup', '0');
-            atualizarStatusBackup();
-        }
-
-        async function compartilharGoogleDrive() {
-            const dataStr = JSON.stringify(dadosApp, null, 2);
-            const blob = new Blob([dataStr], { type: 'application/json' });
-            const file = new File([blob], NOME_ARQUIVO, { type: 'application/json' });
-            if (navigator.canShare && navigator.canShare({ files: [file] })) {
-                try {
-                    await navigator.share({ files: [file], title: 'Backup Prestação de Contas' });
-                    marcarBackupFeito();
-                    mostrarToast('Escolha "Salvar no Google Drive" na lista.', '📤');
-                } catch (e) { }
-            } else {
-                const a = document.createElement('a');
-                a.href = URL.createObjectURL(blob);
-                a.download = NOME_ARQUIVO;
-                document.body.appendChild(a);
-                a.click();
-                document.body.removeChild(a);
-                marcarBackupFeito();
-                mostrarToast('Baixe o arquivo e mova para a pasta do Google Drive.', '📥');
-            }
-        }
-
-        inputImportar.addEventListener('change', async function (e) {
-            const file = e.target.files[0];
-            if (!file) return;
-            try {
-                const texto = await file.text();
-                const dadosImportados = JSON.parse(texto);
-                if (!confirm('Isso vai substituir os dados atuais deste dispositivo pelos dados do arquivo importado. Confirmar?')) return;
-                dadosApp = dadosImportados;
-                localStorage.setItem(LS_KEY, JSON.stringify(dadosApp));
-                marcarBackupFeito();
-                carregarDadosMes();
-                mostrarToast('Backup importado com sucesso!', '✅');
-            } catch (err) {
-                mostrarToast('Arquivo inválido. Verifique se é o backup correto.', '⚠️');
-            }
-            inputImportar.value = '';
-        });
-
-        function carregarDadosMes() {
-            const mes = obterMesAtual();
-            if (!dadosApp[mes]) dadosApp[mes] = { pensao: 0, gastos: [] };
-            if (!dadosApp[mes].extratos) dadosApp[mes].extratos = [];
-            valorPensaInput.value = formatarMoeda(dadosApp[mes].pensao || 0);
-            renderizarTela();
-            renderizarExtratoPreview();
-        }
-        mesRefInput.addEventListener('change', carregarDadosMes);
-
-        valorPensaInput.addEventListener('input', (e) => {
-            let val = e.target.value.replace(/\D/g, '');
-            let num = (parseFloat(val) || 0) / 100;
-            valorPensaInput.value = formatarMoeda(num);
-            const mes = obterMesAtual();
-            if (!dadosApp[mes]) dadosApp[mes] = { pensao: 0, gastos: [] };
-            dadosApp[mes].pensao = num;
-            persistirDados();
-            atualizarResumo();
-        });
-
-        function renderizarExtrasPreview() {
-            listaExtrasPreview.innerHTML = '';
-            fotosExtrasArray.forEach((base64, idx) => {
-                const wrapper = document.createElement('div');
-                wrapper.className = "relative";
-                wrapper.innerHTML = `
-                    <img src="${base64}" class="w-14 h-14 object-cover rounded-lg border border-purple-200 cursor-pointer">
-                    <button type="button" class="absolute -top-1.5 -right-1.5 bg-red-600 hover:bg-red-700 text-white text-[10px] w-4 h-4 rounded-full flex items-center justify-center cursor-pointer leading-none">✕</button>
-                `;
-                wrapper.querySelector('img').onclick = () => abrirZoom(base64);
-                wrapper.querySelector('button').onclick = () => {
-                    fotosExtrasArray.splice(idx, 1);
-                    renderizarExtrasPreview();
-                };
-                listaExtrasPreview.appendChild(wrapper);
-            });
-        }
-
-        function removerFotoPrincipal() {
-            imagemBase64Atual = '';
-            imgPreview.src = '';
-            previewContainer.classList.add('hidden');
-            uploadPlaceholder.classList.remove('hidden');
-            fotoInput.value = '';
-            mostrarToast('Foto removida. Escolha outra ou salve sem foto.', '🗑️');
-        }
-
-        function renderizarExtratoPreview() {
-            const mes = obterMesAtual();
-            const extratos = (dadosApp[mes] && dadosApp[mes].extratos) || [];
-            listaExtratoPreview.innerHTML = '';
-            if (extratos.length === 0) {
-                listaExtratoPreview.innerHTML = `<p class="text-xs text-gray-400">Nenhuma página anexada ainda para ${mes}.</p>`;
-                return;
-            }
-            extratos.forEach((base64, idx) => {
-                const wrapper = document.createElement('div');
-                wrapper.className = "relative";
-                wrapper.innerHTML = `
-                    <img src="${base64}" class="w-16 h-16 object-cover rounded-lg border border-purple-200 cursor-pointer">
-                    <button type="button" class="absolute -top-1.5 -right-1.5 bg-red-600 hover:bg-red-700 text-white text-[10px] w-4 h-4 rounded-full flex items-center justify-center cursor-pointer leading-none">✕</button>
-                `;
-                wrapper.querySelector('img').onclick = () => abrirZoom(base64);
-                wrapper.querySelector('button').onclick = () => {
-                    dadosApp[mes].extratos.splice(idx, 1);
-                    persistirDados();
-                    renderizarExtratoPreview();
-                };
-                listaExtratoPreview.appendChild(wrapper);
-            });
-        }
-
-        extratoInput.addEventListener('change', async function (e) {
-            const mes = obterMesAtual();
-            if (!dadosApp[mes]) dadosApp[mes] = { pensao: 0, gastos: [] };
-            if (!dadosApp[mes].extratos) dadosApp[mes].extratos = [];
-            const files = Array.from(e.target.files);
-            for (const file of files) {
-                const base64 = await comprimirImagem(file, 1600, 0.8);
-                dadosApp[mes].extratos.push(base64);
-            }
-            persistirDados();
-            renderizarExtratoPreview();
-            e.target.value = '';
-        });
-
-        fotosExtrasInput.addEventListener('change', async function (e) {
-            const files = Array.from(e.target.files);
-            for (const file of files) {
-                const base64 = await comprimirImagem(file);
-                fotosExtrasArray.push(base64);
-            }
-            renderizarExtrasPreview();
-            e.target.value = '';
-        });
-
-        function normalizarValor(v) {
-            if (typeof v === 'number' && !isNaN(v)) return v;
-            if (v === null || v === undefined || v === '') return 0;
-            let s = String(v).replace(/[^\d,.-]/g, '');
-            if (s.includes(',') && s.includes('.')) {
-                s = s.replace(/\./g, '').replace(',', '.');
-            } else if (s.includes(',')) {
-                s = s.replace(',', '.');
-            }
-            const n = parseFloat(s);
-            return isNaN(n) ? 0 : n;
-        }
-
-        function normalizarData(v) {
-            if (!v) return '';
-            const s = String(v).trim();
-            if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
-            const br = s.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
-            if (br) return `${br[3]}-${br[2]}-${br[1]}`;
-            return '';
-        }
-
-        async function chamarIAComRetry(base64DataUrl, tentativa = 1) {
-            const apiKey = localStorage.getItem('geminiApiKey');
-            if (!apiKey) {
-                mostrarToast('Configure sua chave da IA (Gemini) no topo do app antes de usar essa função.', '🔑');
-                throw new Error('Chave do Gemini não configurada');
-            }
-            const base64Data = base64DataUrl.split(',')[1];
-            const promptSistema = 'Você é um assistente que extrai dados de comprovantes de pagamento brasileiros. Responda APENAS com um objeto JSON puro (sem markdown, sem crases, sem texto antes ou depois) no formato exato: {"data":"YYYY-MM-DD","valor":0.00,"categoria":"categoria curta","justificativa":"breve descrição do gasto baseada no comprovante"}. Se não identificar um campo com confiança, use "" ou 0.';
-
-            try {
-                // Modelo atualizado para 'gemini-1.5-flash' para suportar as chaves novas do formato 'AQ.'
                 const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -616,19 +376,17 @@
                         generationConfig: { responseMimeType: 'application/json' }
                     })
                 });
-                
                 if (!response.ok) {
                     const errBody = await response.text();
                     console.error("Erro da API Gemini:", errBody);
-                    throw new Error('Erro na API do Gemini: ' + response.status);
+                    throw new Error('Erro API: ' + response.status);
                 }
-                
                 const data = await response.json();
                 let text = data.candidates && data.candidates[0] && data.candidates[0].content.parts[0].text || '{}';
                 text = text.replace(/```json|```/g, '').trim();
                 return JSON.parse(text);
             } catch (error) {
-                if (tentativa <= 2 && error.message.indexOf("Chave do Gemini não configurada") === -1) {
+                if (tentativa <= 2) {
                     await new Promise(r => setTimeout(r, Math.pow(2, tentativa) * 1000));
                     return chamarIAComRetry(base64DataUrl, tentativa + 1);
                 }
@@ -641,8 +399,6 @@
             if (!file) return;
             const base64 = await comprimirImagem(file);
             imagemBase64Atual = base64;
-            
-            // MOSTRAR A IMAGEM IMEDIATAMENTE (Antes da IA)
             imgPreview.src = base64;
             imgPreview.onclick = () => abrirZoom(base64);
             previewContainer.classList.remove('hidden');
@@ -660,14 +416,11 @@
                 mostrarToast('Comprovante lido com sucesso!', '✅');
             } catch (err) {
                 console.error(err);
-                if(err.message.includes("Chave do Gemini não configurada")){
-                    mostrarToast('Salve sua chave da API ali no topo da tela.', '⚠️');
-                } else {
-                    mostrarToast('Não consegui ler automaticamente. Preencha manualmente.', '⚠️');
-                }
+                mostrarToast('Erro IA: ' + err.message, '⚠️');
             }
         });
 
+        // ===================== FORM =====================
         function salvarGasto() {
             const mes = obterMesAtual();
             const editId = document.getElementById('edit-id').value;
@@ -827,6 +580,7 @@
             atualizarResumo();
         }
 
+        // ===================== RELATÓRIO PDF =====================
         function gerarRelatorio() {
             const mes = obterMesAtual();
             const info = dadosApp[mes] || { pensao: 0, gastos: [] };
@@ -835,7 +589,7 @@
             const area = document.getElementById('area-impressao');
 
             let html = `
-                <div class="folha">
+                <div class="folha-capa">
                     <h1 style="font-size:22px;font-weight:800;margin-bottom:4px;">Prestação de Contas</h1>
                     <p style="color:#666;margin-bottom:24px;font-size:13px;">Referência: ${escapeHtml(mes)} • Gerado em ${new Date().toLocaleDateString('pt-BR')}</p>
                     <table style="width:100%;border-collapse:collapse;font-size:13px;">
@@ -853,27 +607,25 @@
                 if (g.fotosExtras && g.fotosExtras.length) imagensArr.push(...g.fotosExtras);
                 
                 let imagens = '';
-                // LÓGICA DE FOTOS LADO A LADO PARA O PDF (SEM GAIOLA/BORDAS)
                 if (imagensArr.length > 0) {
-                    imagens = `<div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(220px, 1fr));gap:10px;margin-top:12px;align-items:start;">`;
+                    imagens = `<div style="display:flex; gap:10px; margin-top:12px; align-items:flex-start;">`;
                     imagensArr.forEach(img => {
-                        imagens += `<img src="${img}" style="width:100%;height:auto;display:block;border:1px solid #ddd;border-radius:6px;">`;
+                        imagens += `<img src="${img}" style="max-height:220px; max-width:32%; object-fit:contain; border:1px solid #ddd; border-radius:4px;">`;
                     });
                     imagens += `</div>`;
                 }
                 
                 html += `
-                    <div class="folha">
-                        <p style="font-size:11px;color:#999;margin-bottom:6px;">Comprovante ${idx + 1} de ${info.gastos.length}</p>
-                        <div style="display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #6d28d9;padding-bottom:10px;margin-bottom:10px;">
-                            <div>
-                                <span style="font-size:10px;text-transform:uppercase;letter-spacing:0.05em;background:#f3e8ff;color:#6d28d9;padding:2px 8px;border-radius:4px;">${escapeHtml(g.categoria)}</span>
-                                <h2 style="font-size:16px;font-weight:700;margin-top:6px;">${escapeHtml(g.local)}</h2>
-                                <p style="font-size:12px;color:#666;">${formatarDataBR(g.data)}</p>
-                            </div>
-                            <div style="font-size:18px;font-weight:700;color:#6d28d9;white-space:nowrap;">${formatarMoeda(g.valor)}</div>
+                    <div class="comprovante-box">
+                        <div style="display:flex; justify-content:space-between; font-size:13px; font-weight:bold; border-bottom:1px solid #eee; padding-bottom:6px; margin-bottom:8px;">
+                            <span style="flex:1;">Categoria: <span style="font-weight:normal; color:#6d28d9;">${escapeHtml(g.categoria)}</span></span>
+                            <span style="flex:1; text-align:center;">Data: <span style="font-weight:normal;">${formatarDataBR(g.data)}</span></span>
+                            <span style="flex:1; text-align:right;">Valor: <span style="font-weight:normal; color:#6d28d9;">${formatarMoeda(g.valor)}</span></span>
                         </div>
-                        <p style="font-size:13px;color:#444;background:#f9f9f9;padding:10px;border-radius:6px;font-style:italic;">"${escapeHtml(g.justificativa)}"</p>
+                        <div style="font-size:13px; margin-bottom:12px; color:#333;">
+                            <strong>Local:</strong> <i style="color:#555;">${escapeHtml(g.local)}</i><br>
+                            <strong>Justificativa:</strong> <i>"${escapeHtml(g.justificativa)}"</i>
+                        </div>
                         ${imagens}
                     </div>
                 `;
@@ -882,14 +634,14 @@
             const extratos = info.extratos || [];
             if (extratos.length > 0) {
                 html += `
-                    <div class="folha">
+                    <div class="folha-capa" style="margin-top: 40px;">
                         <h1 style="font-size:20px;font-weight:800;margin-bottom:6px;">📑 Extrato Bancário</h1>
                         <p style="color:#666;font-size:13px;">Referência: ${escapeHtml(mes)} • ${extratos.length} página(s)</p>
                     </div>
                 `;
                 extratos.forEach((ext, i) => {
                     html += `
-                        <div class="folha">
+                        <div class="folha-capa">
                             <p style="font-size:11px;color:#999;margin-bottom:8px;">Extrato — página ${i + 1} de ${extratos.length}</p>
                             <img src="${ext}" style="max-width:100%;max-height:900px;object-fit:contain;border:1px solid #ddd;border-radius:6px;display:block;margin:0 auto;">
                         </div>
@@ -901,6 +653,7 @@
             setTimeout(() => window.print(), 100);
         }
 
+        // ===================== INICIALIZAÇÃO =====================
         const chaveGeminiSalva = localStorage.getItem('geminiApiKey');
         if (chaveGeminiSalva) document.getElementById('gemini-key-input').value = chaveGeminiSalva;
         carregarDadosMes();
