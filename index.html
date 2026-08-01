@@ -61,9 +61,15 @@
 
             <div class="grid grid-cols-2 gap-3 mb-4">
                 <div>
-                    <!-- NOVO: Seletor de mês inteligente e nativo -->
                     <label class="block text-xs font-medium text-purple-200 mb-1">Mês Ref.</label>
-                    <input type="month" id="mes-ref" value="2026-07" class="w-full bg-purple-800 border border-purple-500 rounded-lg px-3 py-2 text-white font-semibold text-sm focus:outline-none focus:ring-2 focus:ring-white cursor-pointer" lang="pt-BR">
+                    <!-- TRUQUE DE DESIGN AQUI: Caixinha bonita com o input invisível por cima -->
+                    <div class="relative w-full">
+                        <div class="w-full bg-purple-800 border border-purple-500 rounded-lg px-3 py-2 text-white font-semibold text-sm flex justify-between items-center h-full">
+                            <span id="mes-display-visual">Jul/2026</span>
+                            <span class="text-xs opacity-70">📅</span>
+                        </div>
+                        <input type="month" id="mes-ref" value="2026-07" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer" style="-webkit-appearance: none; appearance: none;">
+                    </div>
                 </div>
                 <div>
                     <label class="block text-xs font-medium text-purple-200 mb-1">Pensão Mensal</label>
@@ -224,6 +230,7 @@
         let fotosExtrasArray = [];
 
         const mesRefInput = document.getElementById('mes-ref');
+        const mesDisplayVisual = document.getElementById('mes-display-visual');
         const valorPensaInput = document.getElementById('valor-pensao');
         const fotoInput = document.getElementById('foto-input');
         const fotosExtrasInput = document.getElementById('fotos-extras-input');
@@ -255,12 +262,10 @@
             document.getElementById('modal-zoom').classList.remove('flex');
         }
 
-        // Lê o YYYY-MM do input nativo
         function obterMesAtual() { 
             return mesRefInput.value || '2026-07'; 
         }
 
-        // Converte YYYY-MM para "Mês/Ano" elegante
         function formatarMesBR(yyyy_mm) {
             if (!yyyy_mm) return '';
             const [ano, mes] = yyyy_mm.split('-');
@@ -285,7 +290,6 @@
         }
 
         // ===================== MIGRAR DADOS ANTIGOS =====================
-        // Robô silencioso que converte pastas velhas ("Jul/2026") para o padrão novo ("2026-07")
         function migrarDadosAntigos() {
             const mapaMeses = {'Jan':'01', 'Fev':'02', 'Mar':'03', 'Abr':'04', 'Mai':'05', 'Jun':'06', 'Jul':'07', 'Ago':'08', 'Set':'09', 'Out':'10', 'Nov':'11', 'Dez':'12'};
             let alterouAlgo = false;
@@ -295,15 +299,15 @@
                     const partes = chaveAntiga.split('/');
                     if (partes.length === 2) {
                         let m = partes[0].trim();
-                        m = m.charAt(0).toUpperCase() + m.slice(1).toLowerCase(); // Garante q comece com maiuscula
+                        m = m.charAt(0).toUpperCase() + m.slice(1).toLowerCase(); 
                         const ano = partes[1].trim();
                         
                         if (mapaMeses[m]) {
                             const novaChave = `${ano}-${mapaMeses[m]}`;
                             if (!dadosApp[novaChave]) {
-                                dadosApp[novaChave] = dadosApp[chaveAntiga]; // Move a pasta
+                                dadosApp[novaChave] = dadosApp[chaveAntiga]; 
                             }
-                            delete dadosApp[chaveAntiga]; // Apaga a velha
+                            delete dadosApp[chaveAntiga]; 
                             alterouAlgo = true;
                         }
                     }
@@ -430,7 +434,7 @@
                     if (dadosDrive && Object.keys(dadosDrive).length > 0) {
                         dadosApp = dadosDrive;
                         localStorage.setItem(LS_KEY, JSON.stringify(dadosApp));
-                        migrarDadosAntigos(); // Garante q a nuvem tbm atualiza os formatos
+                        migrarDadosAntigos(); 
                         carregarDadosMes();
                     }
                 }
@@ -516,7 +520,7 @@
                 const dadosImportados = JSON.parse(texto);
                 if (!confirm('Substituir os dados deste dispositivo pelo backup importado?')) return;
                 dadosApp = dadosImportados;
-                migrarDadosAntigos(); // Garante atualização do formato importado
+                migrarDadosAntigos(); 
                 persistirDados();
                 carregarDadosMes();
                 mostrarToast('Backup importado com sucesso!', '✅');
@@ -700,12 +704,11 @@
                 return;
             }
 
-            // A TRAVA DE SEGURANÇA QUE VOCÊ PEDIU
             if (dataVal) {
-                const mesRecibo = dataVal.substring(0, 7); // recorta apenas o "YYYY-MM"
+                const mesRecibo = dataVal.substring(0, 7); 
                 if (mesRecibo !== mes) {
                     const confirmar = confirm(`⚠️ ATENÇÃO: DIVERGÊNCIA DE DATA\n\nVocê está inserindo um comprovante datado de ${formatarDataBR(dataVal)} na prestação de contas de ${formatarMesBR(mes)}.\n\nTem certeza que deseja salvar este recibo na gaveta deste mês?`);
-                    if (!confirmar) return; // Cancela o salvamento se o usuario clicar em Não
+                    if (!confirmar) return; 
                 }
             }
 
@@ -795,16 +798,15 @@
         // ===================== DADOS INICIAIS, NAVEGAÇÃO E RESUMO =====================
         function carregarDadosMes() {
             const mes = obterMesAtual(); // YYYY-MM
-            if (!dadosApp[mes]) dadosApp[mes] = { pensao: 0, gastos: [], extratos: [] };
+            mesDisplayVisual.innerText = formatarMesBR(mes); // Atualiza o visual bonito
             
+            if (!dadosApp[mes]) dadosApp[mes] = { pensao: 0, gastos: [], extratos: [] };
             valorPensaInput.value = dadosApp[mes].pensao || '';
             
-            // Força a atualização da interface para exibir só as coisas desse mês selecionado
             renderizarTela();
             renderizarExtratoPreview();
         }
 
-        // NOVO: Escuta a roleta de meses. Quando girar, carrega aquele mês e zera o formulário de baixo.
         mesRefInput.addEventListener('change', () => {
             carregarDadosMes();
             cancelarEdicao(); 
@@ -939,7 +941,7 @@
 
         // ===================== STARTUP =====================
         window.addEventListener('DOMContentLoaded', () => {
-            migrarDadosAntigos(); // Garante que gavetas velhas viram YYYY-MM silenciosamente
+            migrarDadosAntigos(); 
             
             const chaveGeminiSalva = localStorage.getItem('geminiApiKey');
             if (chaveGeminiSalva) document.getElementById('gemini-key-input').value = chaveGeminiSalva;
