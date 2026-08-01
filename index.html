@@ -21,6 +21,16 @@
         body { font-family: 'Inter', sans-serif; }
         #area-impressao { display: none; }
         
+        /* Ajuste para deixar o calendário nativo bonito */
+        input[type="month"] {
+            color: white;
+            color-scheme: dark; /* Força o tema escuro no calendário nativo */
+        }
+        input[type="month"]::-webkit-calendar-picker-indicator {
+            filter: invert(1); /* Deixa o ícone do calendário branco */
+            cursor: pointer;
+        }
+
         @media print {
             body * { visibility: hidden; }
             #area-impressao, #area-impressao * { visibility: visible; }
@@ -57,30 +67,17 @@
                 <p class="text-xs text-purple-200" id="texto-status-nuvem">☁️ Conectando ao Banco de Dados...</p>
             </div>
             
-            <!-- Migração -->
-            <div id="area-migracao" class="hidden mb-4 bg-orange-500 rounded-xl p-4 text-center shadow-lg border border-orange-400">
-                <h3 class="font-bold text-sm mb-2 text-white">⚠️ Dados antigos detectados</h3>
-                <p class="text-[10px] text-orange-100 mb-3">Encontramos comprovantes na memória do celular. Clique abaixo para transferi-los para a nova Nuvem de alta velocidade.</p>
-                <button onclick="iniciarMigracao()" class="w-full bg-white text-orange-600 font-bold py-2 rounded-lg text-sm shadow cursor-pointer hover:bg-orange-50">
-                    🚀 Migrar Tudo para a Nuvem
-                </button>
-            </div>
-
-            <div class="grid grid-cols-2 gap-3 mb-4 relative">
-                <!-- Seletor de Mês Corrigido para Notebook e Celular -->
-                <div onclick="abrirCalendario()" class="relative bg-purple-800 border border-purple-500 rounded-lg h-[54px] flex items-center justify-between px-3 cursor-pointer hover:bg-purple-600 transition">
-                    <div>
-                        <span class="block text-[10px] text-purple-200 uppercase font-bold tracking-wider mb-0.5">Mês Ref.</span>
-                        <span id="mes-display-bonito" class="text-white font-bold text-sm">Carregando...</span>
-                    </div>
-                    <span class="text-xl">📅</span>
-                    <!-- Input oculto off-screen -->
-                    <input type="month" id="mes-ref" style="position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none;" tabindex="-1">
+            <div class="grid grid-cols-2 gap-3 mb-4">
+                <!-- Seletor de Mês (Layout Antigo e Nativo) -->
+                <div>
+                    <label class="block text-[10px] text-purple-200 uppercase font-bold tracking-wider mb-1">Mês Ref.</label>
+                    <input type="month" id="mes-ref" class="w-full bg-purple-800 border border-purple-500 rounded-lg px-3 py-2 text-white font-semibold text-sm focus:outline-none focus:ring-2 focus:ring-white h-[42px]">
                 </div>
                 
+                <!-- Pensão Mensal (Layout Antigo) -->
                 <div>
-                    <label class="block text-[10px] text-purple-200 uppercase font-bold tracking-wider mb-1">Pensão (R$)</label>
-                    <input type="number" step="0.01" id="valor-pensao" placeholder="0.00" class="w-full bg-purple-800 border border-purple-500 rounded-lg px-3 py-2 text-white font-semibold text-sm focus:outline-none focus:ring-2 focus:ring-white">
+                    <label class="block text-[10px] text-purple-200 uppercase font-bold tracking-wider mb-1">Pensão Mensal</label>
+                    <input type="number" step="0.01" id="valor-pensao" placeholder="R$ 0,00" class="w-full bg-purple-800 border border-purple-500 rounded-lg px-3 py-2 text-white font-semibold text-sm focus:outline-none focus:ring-2 focus:ring-white h-[42px]">
                 </div>
             </div>
 
@@ -258,31 +255,13 @@
         function formatarDataBR(iso) { if (!iso) return ''; const [a, m, d] = iso.split('-'); return `${d}/${m}/${a}`; }
         function escapeHtml(str) { const div = document.createElement('div'); div.innerText = str || ''; return div.innerHTML; }
 
-        // ===================== CALENDÁRIO CORRIGIDO =====================
+        // ===================== CALENDÁRIO =====================
         const mesRefInput = document.getElementById('mes-ref');
-        const mesDisplay = document.getElementById('mes-display-bonito');
         
         function getMesRefAtual() { return mesRefInput.value; }
-        
-        function formatarMesExtenso(YYYY_MM) {
-            if(!YYYY_MM) return '';
-            const [ano, mes] = YYYY_MM.split('-');
-            const meses = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
-            return `${meses[parseInt(mes)-1]}/${ano}`;
-        }
 
-        // Nova função para abrir o calendário no Notebook e Celular sem travar
-        function abrirCalendario() {
-            try {
-                mesRefInput.showPicker();
-            } catch (error) {
-                // Fallback de segurança para navegadores antigos
-                mesRefInput.focus();
-                mesRefInput.click();
-            }
-        }
-
-        const ultimoMesAcessado = localStorage.getItem('ultimoMes_v3');
+        // Memória do Mês
+        const ultimoMesAcessado = localStorage.getItem('ultimoMes_v4');
         if (ultimoMesAcessado) {
             mesRefInput.value = ultimoMesAcessado;
         } else {
@@ -290,12 +269,10 @@
             const m = String(hoje.getMonth() + 1).padStart(2, '0');
             mesRefInput.value = `${hoje.getFullYear()}-${m}`;
         }
-        mesDisplay.innerText = formatarMesExtenso(mesRefInput.value);
 
         mesRefInput.addEventListener('change', (e) => {
             const novoMes = e.target.value;
-            mesDisplay.innerText = formatarMesExtenso(novoMes);
-            localStorage.setItem('ultimoMes_v3', novoMes);
+            localStorage.setItem('ultimoMes_v4', novoMes);
             cancelarEdicao();
             renderizarTela();
             renderizarExtratoPreview();
@@ -317,7 +294,7 @@
                     renderizarTela();
                     renderizarExtratoPreview();
                 } else {
-                    document.getElementById('texto-status-nuvem').innerHTML = "⚠️ Falha ao ler banco (A tabela 'prestacao_contas' foi criada?)";
+                    document.getElementById('texto-status-nuvem').innerHTML = "⚠️ Falha ao ler banco";
                 }
             } catch(e) {
                 document.getElementById('texto-status-nuvem').innerHTML = "⚠️ Sem internet / Sem conexão";
@@ -671,6 +648,13 @@
         });
 
         // ===================== GERAÇÃO PDF =====================
+        function formatarMesExtensoParaPDF(YYYY_MM) {
+            if(!YYYY_MM) return '';
+            const [ano, mes] = YYYY_MM.split('-');
+            const meses = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
+            return `${meses[parseInt(mes)-1]} de ${ano}`;
+        }
+
         function gerarRelatorio() {
             const mes = getMesRefAtual(); const info = dadosApp[mes] || { pensao: 0, gastos: [] };
             const totalGasto = info.gastos.reduce((a, c) => a + c.valor, 0); const saldo = (info.pensao || 0) - totalGasto;
@@ -678,7 +662,7 @@
 
             let html = `
                 <div class="folha-capa">
-                    <h1 style="font-size:22px;font-weight:800;margin-bottom:20px;">Relatório de Prestação de Contas - ${formatarMesExtenso(mes)}</h1>
+                    <h1 style="font-size:22px;font-weight:800;margin-bottom:20px;">Relatório de Prestação de Contas - ${formatarMesExtensoParaPDF(mes)}</h1>
                     <table style="width:100%;border-collapse:collapse;font-size:14px; margin-bottom: 30px;">
                         <tr><td style="padding:12px 0;border-bottom:1px solid #eee;">Pensão Mensal</td><td style="padding:12px 0;text-align:right;font-weight:600;border-bottom:1px solid #eee;">${formatarMoeda(info.pensao)}</td></tr>
                         <tr><td style="padding:12px 0;border-bottom:1px solid #eee;">Total Gasto</td><td style="padding:12px 0;text-align:right;font-weight:600;border-bottom:1px solid #eee;">${formatarMoeda(totalGasto)}</td></tr>
@@ -720,73 +704,7 @@
         if (geminiSalva) document.getElementById('gemini-key-input').value = geminiSalva;
         function salvarChaveGemini() { localStorage.setItem('geminiApiKey', document.getElementById('gemini-key-input').value.trim()); mostrarToast('Chave IA salva!', '✅'); }
 
-        // ===================== ROBÔ DE MIGRAÇÃO CORRIGIDO =====================
-        function verificarMigracao() {
-            // Fareja dados antigos em todas as versões possíveis
-            const v2 = localStorage.getItem('prestacao_contas_dados_v2');
-            const v1 = localStorage.getItem('prestacao_contas_dados');
-            
-            let temDados = false;
-            if (v2 && Object.keys(JSON.parse(v2)).length > 0) temDados = true;
-            if (v1 && Object.keys(JSON.parse(v1)).length > 0) temDados = true;
-
-            if (temDados) {
-                document.getElementById('area-migracao').classList.remove('hidden');
-            }
-        }
-        
-        async function iniciarMigracao() {
-            if(!statusConexaoBD) {
-                mostrarToast('❌ Erro: O Supabase não está conectado (rode o código SQL!)', '⚠️');
-                return;
-            }
-
-            const btn = document.querySelector('#area-migracao button');
-            btn.innerText = "⏳ Transferindo (Pode levar vários minutos)...";
-            btn.disabled = true;
-            
-            try {
-                // Pega de qualquer versão antiga
-                const strDados = localStorage.getItem('prestacao_contas_dados_v2') || localStorage.getItem('prestacao_contas_dados');
-                const dadosVelhos = JSON.parse(strDados);
-                
-                for (const mes of Object.keys(dadosVelhos)) {
-                    if (!dadosApp[mes]) dadosApp[mes] = { pensao: dadosVelhos[mes].pensao || 0, gastos: [], extratos: [] };
-                    
-                    for (const gastoVelho of (dadosVelhos[mes].gastos || [])) {
-                        let novaFoto = gastoVelho.foto ? await fazerUploadImagemSupabase(gastoVelho.foto) : "";
-                        let novasExtras = [];
-                        if(gastoVelho.fotosExtras) {
-                            for(let ext of gastoVelho.fotosExtras) novasExtras.push(await fazerUploadImagemSupabase(ext));
-                        }
-                        
-                        dadosApp[mes].gastos.push({
-                            id: gastoVelho.id || Date.now(), data: gastoVelho.data, valor: gastoVelho.valor, categoria: gastoVelho.categoria,
-                            local: gastoVelho.local, justificativa: gastoVelho.justificativa, foto: novaFoto, fotosExtras: novasExtras
-                        });
-                    }
-                    
-                    if(dadosVelhos[mes].extratos) {
-                        for(let extrato of dadosVelhos[mes].extratos) dadosApp[mes].extratos.push(await fazerUploadImagemSupabase(extrato));
-                    }
-                }
-                
-                await salvarBancoSupabase();
-                localStorage.removeItem('prestacao_contas_dados_v2');
-                localStorage.removeItem('prestacao_contas_dados');
-                
-                document.getElementById('area-migracao').classList.add('hidden');
-                mostrarToast('Tudo Migrado com Sucesso!', '🎉');
-                renderizarTela(); renderizarExtratoPreview();
-                
-            } catch (e) {
-                btn.innerText = "Erro. Tentar novamente"; btn.disabled = false;
-                mostrarToast('Falha na migração.', '❌');
-            }
-        }
-
         // Iniciar
-        verificarMigracao(); // Fareja a migração imediatamente, não depende da internet!
         carregarBancoSupabase();
 
     </script>
