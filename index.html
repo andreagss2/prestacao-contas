@@ -381,6 +381,8 @@
                     if (dados.categoria) document.getElementById('campo-categoria').value = dados.categoria; if (dados.justificativa) document.getElementById('campo-justificativa').value = dados.justificativa;
                     mostrarToast('Preenchido pela IA!', '✨');
                 } else { mostrarToast('Não foi possível ler os dados automaticamente.', '⚠️'); }
+            } else {
+                mostrarToast('A chave da IA não foi encontrada no banco.', '⚠️');
             }
         });
 
